@@ -25,7 +25,11 @@
       </div>
 
       <nav class="top-nav">
-        <a href="#home" class="nav-link active">Home</a>
+        <button id="navHomeBtn" class="nav-btn active">Home</button>
+        <button id="navPrsBtn" class="nav-btn">
+          <span>PR Requests</span>
+          <span id="navPrCount" class="nav-counter">0</span>
+        </button>
       </nav>
 
       <div class="top-actions">
@@ -44,7 +48,8 @@
     </header>
 
     <main class="main-content">
-      <section class="hero-section">
+      <!-- HOME VIEW -->
+      <section id="homeView" class="view-section active">
         <div class="hero-header">
           <span class="badge-pill">CTO Executive Overview</span>
           <h1>Team Velocity & Engineering Pulse</h1>
@@ -127,7 +132,57 @@
           </div>
         </div>
       </section>
+
+      <!-- DEDICATED PR REQUESTS TABLE VIEW -->
+      <section id="prsView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">Automated PR Intelligence</div>
+            <h2>Pull Requests Directory</h2>
+            <p class="table-view-sub">Track team submissions, code changes, and executive AI summaries in real-time.</p>
+          </div>
+          <button id="refreshTableBtn" class="btn-refresh-table" title="Sync from GitHub">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+            </svg>
+            <span>Refresh PRs</span>
+          </button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-responsive">
+            <table class="prs-table">
+              <thead>
+                <tr>
+                  <th style="width: 24%;">PR Details</th>
+                  <th style="width: 16%;">Author</th>
+                  <th style="width: 40%;">Executive Summary</th>
+                  <th style="width: 10%;">Status</th>
+                  <th style="width: 10%;">Date</th>
+                </tr>
+              </thead>
+              <tbody id="prsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="tableEmptyState" class="table-empty-state">
+            <div class="empty-icon-wrap">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="18" r="3"/>
+                <circle cx="6" cy="6" r="3"/>
+                <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
+                <line x1="6" y1="9" x2="6" y2="21"/>
+              </svg>
+            </div>
+            <h4>No PRs Detected Yet</h4>
+            <p>Pull requests will automatically populate here with full AI summaries once submitted on GitHub.</p>
+          </div>
+        </div>
+      </section>
     </main>
+
 
     <!-- Slide-out Right Edge Pull Tab -->
     <div id="sidePullHandle" class="side-pull-handle" title="Pull open side panel">
@@ -169,7 +224,8 @@
             </svg>
             <span>PR Requests</span>
           </div>
-          <span class="count-pill">0</span>
+          <span id="drawerPrCount" class="count-pill">0</span>
+
         </button>
       </div>
 

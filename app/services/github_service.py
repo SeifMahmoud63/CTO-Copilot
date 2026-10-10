@@ -79,7 +79,7 @@ class GitHubService:
                 logger.error(f"Failed to fetch pull requests: {e}")
                 return []
 
-    async def fetch_pr_diff(self, pr_number: int) -> str:
+    async def fetch_pr_diff(self, pr_number: int) -> tuple[str, bool]:
         """Fetch diff content for a pull request."""
         diff_url = f"{self.repo_url}/pulls/{pr_number}"
         diff_headers = {**self.headers, "Accept": "application/vnd.github.v3.diff"}
@@ -87,13 +87,14 @@ class GitHubService:
             try:
                 res = await client.get(diff_url, headers=diff_headers, timeout=20.0)
                 if res.status_code == 200:
-                    # Truncate diff if very long to stay within token limits
                     diff_text = res.text
-                    return diff_text[:3500] if len(diff_text) > 3500 else diff_text
-                return "Diff not available."
+                    is_truncated = len(diff_text) > 3500
+                    excerpt = diff_text[:3500] if is_truncated else diff_text
+                    return excerpt, is_truncated
+                return "Diff not available.", False
             except Exception as e:
                 logger.warning(f"Could not retrieve diff for PR #{pr_number}: {e}")
-                return "Diff not available."
+                return "Diff not available.", False
 
     async def summarize_pr(self, pr_number: int, force_refresh: bool = False) -> Optional[PRItem]:
         """Fetch PR details, diff, and generate summary via LLM."""
@@ -125,18 +126,20 @@ class GitHubService:
             )
 
         # Get diff and build prompt
-        diff_content = await self.fetch_pr_diff(pr_number)
+        diff_content, is_truncated = await self.fetch_pr_diff(pr_number)
         prompt = UserPromptTemplate.PR_DIFF_TEMPLATE.value.format(
-            title=pr_data["title"],
+            title=pr_data["title"] or "Untitled",
             author=pr_data.get("user", {}).get("login", "unknown"),
             base_branch=pr_data.get("base", {}).get("ref", "main"),
             head_branch=pr_data.get("head", {}).get("ref", "unknown"),
             description=pr_data.get("body") or "No description provided.",
+            is_truncated="true" if is_truncated else "false",
             diff_excerpt=diff_content
         )
 
         summary_text, provider = llm_service.generate_pr_summary(prompt)
         now_iso = datetime.now(timezone.utc).isoformat()
+
 
         self.summary_cache[pr_id] = {
             "summary": summary_text,
