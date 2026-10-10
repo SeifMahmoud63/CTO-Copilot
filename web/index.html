@@ -175,7 +175,10 @@
 
       <div class="drawer-content">
         <div id="prRequestsPanel" class="tab-pane active">
-          <div class="empty-state">
+
+          <div id="prListContainer" class="pr-cards-list"></div>
+
+          <div id="emptyPrState" class="empty-state">
             <div class="empty-icon-wrap">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="18" cy="18" r="3"/>
@@ -185,10 +188,11 @@
               </svg>
             </div>
             <h4>No PR Requests</h4>
-            <p>Pull requests awaiting CTO review will appear here.</p>
           </div>
+
         </div>
       </div>
+
     </aside>
   </div>
 
