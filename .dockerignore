@@ -1,0 +1,56 @@
+# Git (never needed inside the image)
+.git
+.gitattributes
+.gitignore
+
+# Docker / Compose files (build context only needs requirements + app + web)
+docker-compose*.yml
+docker-compose*.yaml
+
+# Env & secrets (NEVER bake into the image)
+.env
+.env.*
+*.env
+*.pem
+*.key
+secrets/
+
+# Python bytecode & virtualenvs
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Test / lint / coverage caches & logs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+logs/
+
+# Build / packaging leftovers
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDEs & OS junk
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docs (not needed at runtime)
+README.md

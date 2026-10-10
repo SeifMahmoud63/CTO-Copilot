@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Query, Request
-from typing import Optional
 from app.core.config import settings
 from app.core.enums import AppMessage
 from app.schemas.pr_schema import PRListResponse, PRItem, CircuitBreakerStatus, DashboardLeaderboardResponse
@@ -27,7 +26,8 @@ async def list_prs(state: str = Query(default="all", pattern="^(open|closed|all)
         repository=settings.github_repo,
         total_prs=len(prs),
         prs=prs,
-        message=message
+        message=message,
+        stale_threshold_days=settings.pr_stale_threshold_days
     )
 
 @router.get("/dashboard", response_model=DashboardLeaderboardResponse)
@@ -65,30 +65,12 @@ async def github_webhook(request: Request):
 
 @router.get("/db/stats")
 async def get_database_stats():
-    """Retrieve record counts from MySQL async tables (PRs, Summaries, Scores, Approvals, Audit Logs)."""
+    """Retrieve record counts from the 2-table MySQL schema (PRs, Engineers)."""
     return await db_service.get_db_stats()
 
-@router.get("/db/audit-logs")
-async def get_audit_logs(limit: int = Query(default=50, ge=1, le=200)):
-    """Retrieve the recent audit log trail from MySQL."""
-    return await db_service.get_audit_logs(limit=limit)
-
-@router.post("/prs/{pr_number}/decision")
-async def record_pr_decision(
-    pr_number: int,
-    status: str = Query(..., pattern="^(APPROVED|CHANGES_REQUESTED|REJECTED|PENDING)$"),
-    decision_by: str = Query(default="CTO"),
-    review_comment: Optional[str] = None
-):
-    """Register an approval or review decision in MySQL."""
-    record = await db_service.save_approval(
-        pr_number=pr_number,
-        status=status,
-        decision_by=decision_by,
-        review_comment=review_comment
-    )
-    if not record:
-        raise HTTPException(status_code=400, detail=f"Failed to record decision for PR #{pr_number}")
-    return {"status": "success", "decision": status, "pr_number": pr_number, "by": decision_by}
+@router.get("/engineers")
+async def list_engineers():
+    """List engineers with PR count, total score and average score from MySQL."""
+    return {"engineers": await db_service.get_engineers()}
 
 

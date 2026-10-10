@@ -1,6 +1,6 @@
 import httpx
 import logging
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 from app.core.config import settings
@@ -23,6 +23,20 @@ def _parse_github_dt(value: Optional[str]) -> Optional[datetime]:
         return dt
     except Exception:
         return None
+
+def _compute_pr_overdue(value: Optional[str], pr_state: Any) -> tuple[bool, int]:
+    """Calculate if an open PR exceeds PR_STALE_THRESHOLD_DAYS."""
+    state_str = pr_state.value if hasattr(pr_state, "value") else str(pr_state)
+    if state_str.lower() != "open" or not value:
+        return False, 0
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        age_days = (now - dt).days
+        is_stale = age_days >= settings.pr_stale_threshold_days
+        return is_stale, max(0, age_days)
+    except Exception:
+        return False, 0
 
 class GitHubService:
     def __init__(self):
@@ -66,6 +80,8 @@ class GitHubService:
                         except Exception as e:
                             logger.warning(f"Auto-summary generation failed for PR #{pr_number}: {e}")
 
+                    is_overdue, overdue_days = _compute_pr_overdue(item.get("created_at"), pr_status)
+
                     pr_item = PRItem(
                         id=pr_id,
                         number=pr_number,
@@ -82,12 +98,15 @@ class GitHubService:
                         summary=cached.get("summary"),
                         summary_provider=cached.get("provider"),
                         summary_timestamp=cached.get("timestamp"),
-                        impact_score=cached.get("impact_score")
+                        impact_score=cached.get("impact_score"),
+                        is_overdue=is_overdue,
+                        overdue_days=overdue_days
                     )
                     pr_items.append(pr_item)
 
-                    # Persist PR to MySQL asynchronously (state + timestamps sync from GitHub)
+                    # Persist PR to MySQL asynchronously (state + timestamps + overdue + summary + score)
                     try:
+                        cached_provider = cached.get("provider")
                         await db_service.save_or_update_pr(
                             number=pr_item.number,
                             title=pr_item.title,
@@ -101,9 +120,21 @@ class GitHubService:
                             github_pr_id=pr_item.id,
                             created_at=_parse_github_dt(item.get("created_at")),
                             updated_at=_parse_github_dt(item.get("updated_at")),
+                            is_overdue=is_overdue,
+                            overdue_days=overdue_days,
+                            summary_text=cached.get("summary"),
+                            summary_provider=cached_provider.value if hasattr(cached_provider, 'value') else cached_provider,
+                            summary_timestamp=_parse_github_dt(cached.get("timestamp")),
+                            impact_score=cached.get("impact_score")
                         )
                     except Exception as err:
                         logger.debug(f"Async DB save_or_update_pr bypassed: {err}")
+
+                # Rebuild engineers aggregates (PR count, total + avg score per author)
+                try:
+                    await db_service.rebuild_engineers(pr_items)
+                except Exception as err:
+                    logger.debug(f"Async DB rebuild_engineers bypassed: {err}")
 
                 return pr_items
 
@@ -142,6 +173,7 @@ class GitHubService:
         if not force_refresh and pr_id in self.summary_cache:
             cached = self.summary_cache[pr_id]
             cached_state = PRStatus.MERGED if pr_data.get("merged_at") else PRStatus(pr_data["state"])
+            cached_overdue, cached_overdue_days = _compute_pr_overdue(pr_data.get("created_at"), cached_state)
             return PRItem(
                 id=pr_id,
                 number=pr_data["number"],
@@ -157,7 +189,9 @@ class GitHubService:
                 summary=cached.get("summary"),
                 summary_provider=cached.get("provider"),
                 summary_timestamp=cached.get("timestamp"),
-                impact_score=cached.get("impact_score")
+                impact_score=cached.get("impact_score"),
+                is_overdue=cached_overdue,
+                overdue_days=cached_overdue_days
             )
 
         # 1. Fetch diff and format prompt
@@ -186,13 +220,20 @@ class GitHubService:
             "impact_score": impact_score
         }
 
-        # Persist summary and impact score to MySQL asynchronously
+        # Single inline upsert: PR + summary + impact score (2-table schema)
+        pr_state_str = (
+            PRStatus.MERGED.value if pr_data.get("merged_at")
+            else pr_data.get("state", "open")
+        )
+        is_overdue, overdue_days = _compute_pr_overdue(pr_data.get("created_at"), pr_state_str)
+        tier = (
+            "Critical Driver" if (impact_score is not None and impact_score >= 8.0)
+            else "High Impact" if (impact_score is not None and impact_score >= 6.5)
+            else "Solid Contributor" if (impact_score is not None and impact_score >= 5.0)
+            else "Routine Support"
+        ) if impact_score is not None else None
+
         try:
-            # Ensure PR exists in DB first (with merged-aware state + timestamps)
-            pr_state_str = (
-                PRStatus.MERGED.value if pr_data.get("merged_at")
-                else pr_data.get("state", "open")
-            )
             await db_service.save_or_update_pr(
                 number=pr_data["number"],
                 title=pr_data["title"],
@@ -205,30 +246,16 @@ class GitHubService:
                 github_pr_id=pr_id,
                 created_at=_parse_github_dt(pr_data.get("created_at")),
                 updated_at=_parse_github_dt(pr_data.get("updated_at")),
-            )
-
-            await db_service.save_summary(
-                pr_number=pr_data["number"],
+                is_overdue=is_overdue,
+                overdue_days=overdue_days,
                 summary_text=summary_text,
-                provider=provider.value if hasattr(provider, 'value') else str(provider),
-                model_name=model_used
+                summary_provider=provider.value if hasattr(provider, 'value') else str(provider),
+                summary_timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+                impact_score=impact_score,
+                impact_tier=tier
             )
-
-            if impact_score is not None:
-                tier = (
-                    "Critical Driver" if impact_score >= 8.0
-                    else "High Impact" if impact_score >= 6.5
-                    else "Solid Contributor" if impact_score >= 5.0
-                    else "Routine Support"
-                )
-                await db_service.save_impact_score(
-                    pr_number=pr_data["number"],
-                    score=impact_score,
-                    tier=tier,
-                    model_name=settings.jev_model
-                )
         except Exception as db_err:
-            logger.debug(f"Async DB save summary/impact bypassed: {db_err}")
+            logger.debug(f"Async DB save bypassed: {db_err}")
 
         return PRItem(
             id=pr_id,
@@ -245,7 +272,9 @@ class GitHubService:
             summary=summary_text,
             summary_provider=provider,
             summary_timestamp=now_iso,
-            impact_score=impact_score
+            impact_score=impact_score,
+            is_overdue=is_overdue,
+            overdue_days=overdue_days
         )
 
     async def get_team_dashboard(self, days: int = 30) -> DashboardLeaderboardResponse:
@@ -329,12 +358,16 @@ class GitHubService:
             365: "Last 1 Year"
         }
 
+        overdue_prs = [p for p in all_prs if p.is_overdue]
+
         return DashboardLeaderboardResponse(
             timeframe_days=days,
             timeframe_label=label_map.get(days, f"Last {days} Days"),
             total_prs=sum(s.total_prs for s in stats_list),
             total_engineers=len(stats_list),
-            leaderboard=stats_list
+            stale_threshold_days=settings.pr_stale_threshold_days,
+            leaderboard=stats_list,
+            overdue_prs=overdue_prs
         )
 
 github_service = GitHubService()

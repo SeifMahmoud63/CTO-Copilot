@@ -927,6 +927,43 @@ body {
   margin-top: 4px;
 }
 
+/* Section header nested INSIDE a card (e.g. Overdue SLA block) */
+.card-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.card-section-header h3 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 8px 0 0;
+  line-height: 1.35;
+}
+
+.card-section-header .table-view-sub {
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+.card-section-header .overdue-count-pill {
+  flex-shrink: 0;
+  margin-top: 6px;
+  white-space: nowrap;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+  border: 1px solid #fecaca;
+}
+
 .btn-refresh-table {
   display: inline-flex;
   align-items: center;
@@ -1313,6 +1350,53 @@ body {
   border: 1px solid #e2e8f0;
 }
 
+/* Overdue / Stale PR badges */
+.overdue-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.overdue-days-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+.btn-view-pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--primary-accent);
+  border: 1px solid var(--border-color);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-view-pr:hover {
+  background: var(--primary-soft);
+  border-color: #bfdbfe;
+}
+
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -1329,6 +1413,14 @@ body {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+  .card-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 18px 16px 14px;
+  }
+  .card-section-header .overdue-count-pill {
+    margin-top: 0;
   }
   :root {
     --drawer-width: 320px;

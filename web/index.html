@@ -33,6 +33,10 @@
         <button id="navDashBtn" class="nav-btn">
           <span>Dashboard</span>
         </button>
+        <button id="navStaleBtn" class="nav-btn">
+          <span>Overdue</span>
+          <span id="navStaleCount" class="nav-counter">0</span>
+        </button>
       </nav>
 
 
@@ -167,14 +171,13 @@
                 <tr>
                   <th style="width: 4%;">#</th>
                   <th style="width: 8%;">ID</th>
-                  <th style="width: 15%;">Author — الشخص</th>
-                  <th style="width: 13%;">Created — امتى اترفعت</th>
-                  <th style="width: 32%;">Summary — الملخص</th>
-                  <th style="width: 9%;">State — الحالة</th>
-                  <th style="width: 9%;">Score — الاسكور</th>
-                  <th style="width: 10%;">PR</th>
+                  <th style="width: 15%;">Author</th>
+                  <th style="width: 13%;">Created</th>
+                  <th style="width: 32%;">Summary</th>
+                  <th style="width: 9%;">State</th>
+                  <th style="width: 9%;">Score</th>
+                  <th style="width: 10%;">PR Details</th>
                 </tr>
-
               </thead>
               <tbody id="prsTableBody">
                 <!-- Dynamically populated -->
@@ -195,15 +198,26 @@
             <p>Pull requests will automatically populate here with full AI summaries once submitted on GitHub.</p>
           </div>
         </div>
+      </section>
 
-        <!-- STALE / DELAYED PRs TABLE (> 5 days open without review) -->
-        <div class="table-view-header" style="margin-top: 32px; margin-bottom: 16px;">
+      <!-- STANDALONE OVERDUE / STALE PRs VIEW -->
+      <section id="staleView" class="view-section">
+        <div class="table-view-header">
           <div>
-            <div class="badge-pill" style="background: #fef2f2; color: #dc2626;">Delayed Review — تأخير</div>
-            <h2 style="font-size: 1.4rem;">Stale PRs — متأخرة أكتر من 5 أيام</h2>
-            <p class="table-view-sub">أي PR مفتوحة وعدى عليها 5 أيام من غير مراجعة بتظهر هنا مع تاريخ الرفع وعدد أيام التأخير.</p>
+            <div class="badge-pill" style="background: #fef2f2; color: #dc2626; border-color: #fecaca;">
+              ⚠️ SLA Alert
+            </div>
+            <h2>Overdue Pull Requests</h2>
+            <p class="table-view-sub">
+              Open pull requests remaining active beyond the SLA threshold (<span class="stale-threshold-num">5</span> days).
+            </p>
           </div>
-          <span id="staleCountBadge" class="metric-chip neutral">0 متأخرة</span>
+          <button id="refreshStaleBtn" class="btn-refresh-table" title="Sync from GitHub">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
         </div>
 
         <div class="table-card" style="border-color: #fecaca;">
@@ -212,11 +226,11 @@
               <thead>
                 <tr>
                   <th style="width: 4%;">#</th>
-                  <th style="width: 16%;">Author — الشخص</th>
-                  <th style="width: 24%;">PR — بتاعته</th>
-                  <th style="width: 32%;">Summary — الملخص</th>
-                  <th style="width: 12%;">Created — تاريخ الرفع</th>
-                  <th style="width: 12%;">Delayed — بقالها قد إيه</th>
+                  <th style="width: 16%;">Author</th>
+                  <th style="width: 24%;">PR Details</th>
+                  <th style="width: 32%;">Summary</th>
+                  <th style="width: 12%;">Created</th>
+                  <th style="width: 12%;">Overdue Duration</th>
                 </tr>
               </thead>
               <tbody id="staleTableBody">
@@ -226,14 +240,14 @@
           </div>
 
           <div id="staleEmptyState" class="table-empty-state" style="display: flex;">
-            <div class="empty-icon-wrap">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <div class="empty-icon-wrap" style="background: #f0fdf4; border-color: #bbf7d0;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12 6 12 12 16 14"/>
               </svg>
             </div>
-            <h4>لا يوجد PRs متأخرة</h4>
-            <p>كل الـ PRs المفتوحة لسه في أول 5 أيام — مفيش حاجة مركونة.</p>
+            <h4 style="color: #166534;">No Overdue PRs</h4>
+            <p>All active pull requests are within the configured SLA delivery window.</p>
           </div>
         </div>
       </section>
@@ -244,7 +258,7 @@
           <div>
             <div class="badge-pill">CTO Team Analytics</div>
             <h2>Engineer Impact & Output Dashboard</h2>
-            <p class="table-view-sub">Ranked by code & architectural impact (evaluated via JEV) rather than raw commit quantity.</p>
+            <p class="table-view-sub">Ranked by code & architectural impact rather than raw commit quantity.</p>
           </div>
         </div>
 
@@ -377,6 +391,16 @@
               <line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
             <span>Dashboard</span>
+          </div>
+        </button>
+
+        <button class="drawer-tab" id="drawerStaleBtn" data-tab="overdue" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Overdue</span>
           </div>
         </button>
       </div>

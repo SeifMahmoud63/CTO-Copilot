@@ -4,11 +4,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const homeView = document.getElementById('homeView');
   const prsView = document.getElementById('prsView');
   const dashboardView = document.getElementById('dashboardView');
+  const staleView = document.getElementById('staleView');
   const navHomeBtn = document.getElementById('navHomeBtn');
   const navPrsBtn = document.getElementById('navPrsBtn');
   const navDashBtn = document.getElementById('navDashBtn');
+  const navStaleBtn = document.getElementById('navStaleBtn');
   const navPrCount = document.getElementById('navPrCount');
+  const navStaleCount = document.getElementById('navStaleCount');
   const refreshTableBtn = document.getElementById('refreshTableBtn');
+  const refreshStaleBtn = document.getElementById('refreshStaleBtn');
   const prsTableBody = document.getElementById('prsTableBody');
   const tableEmptyState = document.getElementById('tableEmptyState');
 
@@ -20,12 +24,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidePullHandle = document.getElementById('sidePullHandle');
   const drawerPrBtn = document.getElementById('drawerPrBtn');
   const drawerDashBtn = document.getElementById('drawerDashBtn');
+  const drawerStaleBtn = document.getElementById('drawerStaleBtn');
 
-  // Stale table elements (> 5 days open)
+  // Stale table elements (threshold synced from backend /api/prs, configured via PR_STALE_THRESHOLD_DAYS)
   const staleTableBody = document.getElementById('staleTableBody');
   const staleEmptyState = document.getElementById('staleEmptyState');
   const staleCountBadge = document.getElementById('staleCountBadge');
-  const STALE_DAYS_THRESHOLD = 5;
+  let staleDaysThreshold = 5;
 
   // PR Filters
   const filterBtns = document.querySelectorAll('.filter-btn');
@@ -56,9 +61,11 @@ document.addEventListener('DOMContentLoaded', () => {
     homeView?.classList.remove('active');
     prsView?.classList.remove('active');
     dashboardView?.classList.remove('active');
+    staleView?.classList.remove('active');
     navHomeBtn?.classList.remove('active');
     navPrsBtn?.classList.remove('active');
     navDashBtn?.classList.remove('active');
+    navStaleBtn?.classList.remove('active');
 
     if (viewName === 'prs') {
       prsView?.classList.add('active');
@@ -68,6 +75,10 @@ document.addEventListener('DOMContentLoaded', () => {
       dashboardView?.classList.add('active');
       navDashBtn?.classList.add('active');
       loadDashboard(currentDays);
+    } else if (viewName === 'stale') {
+      staleView?.classList.add('active');
+      navStaleBtn?.classList.add('active');
+      loadPullRequests();
     } else {
       homeView?.classList.add('active');
       navHomeBtn?.classList.add('active');
@@ -77,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   navHomeBtn?.addEventListener('click', () => switchView('home'));
   navPrsBtn?.addEventListener('click', () => switchView('prs'));
   navDashBtn?.addEventListener('click', () => switchView('dashboard'));
+  navStaleBtn?.addEventListener('click', () => switchView('stale'));
 
   // Drawer buttons switch views directly
   drawerPrBtn?.addEventListener('click', () => {
@@ -87,6 +99,11 @@ document.addEventListener('DOMContentLoaded', () => {
   drawerDashBtn?.addEventListener('click', () => {
     closeDrawer();
     switchView('dashboard');
+  });
+
+  drawerStaleBtn?.addEventListener('click', () => {
+    closeDrawer();
+    switchView('stale');
   });
 
   // Drawer open / close
@@ -126,6 +143,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  refreshStaleBtn?.addEventListener('click', () => {
+    refreshStaleBtn.classList.add('spinning');
+    loadPullRequests().finally(() => {
+      refreshStaleBtn.classList.remove('spinning');
+    });
+  });
+
   // Timestamp formatter
   function formatTimestamp(isoStr) {
     if (!isoStr) return 'Just now';
@@ -152,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Helper to render JEV Impact Badge
+  // Helper to render Impact Badge
   function renderImpactBadge(score) {
     if (score !== null && score !== undefined) {
       let levelClass = 'low';
@@ -160,9 +184,9 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (score >= 6.0) levelClass = 'medium';
       else if (score >= 4.0) levelClass = 'moderate';
 
-      return `<span class="impact-badge ${levelClass}" title="Impact evaluated by JEV Decision Intelligence: ${score}/10">⚡ ${score}/10</span>`;
+      return `<span class="impact-badge ${levelClass}" title="Impact Score: ${score}/10">⚡ ${score}/10</span>`;
     }
-    return `<span class="impact-badge low" style="opacity: 0.7;" title="Impact score pending JEV evaluation">⚡ —</span>`;
+    return `<span class="impact-badge low" style="opacity: 0.7;" title="Impact evaluation in progress">⚡ —</span>`;
   }
 
   // Days since creation (for stale detection)
@@ -251,13 +275,14 @@ document.addEventListener('DOMContentLoaded', () => {
     renderStalePRs(allPRs);
   }
 
-  // Render Table 3 — stale: open PRs older than STALE_DAYS_THRESHOLD days
+  // Render Table 3 — stale: open PRs older than the backend-configured threshold
   function renderStalePRs(prs) {
     const stale = (prs || [])
-      .filter((pr) => (pr.state || '').toLowerCase() === 'open' && daysSince(pr.created_at) >= STALE_DAYS_THRESHOLD)
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      .filter((pr) => pr.is_overdue || ((pr.state || '').toLowerCase() === 'open' && daysSince(pr.created_at) >= staleDaysThreshold))
+      .sort((a, b) => (b.overdue_days || daysSince(b.created_at)) - (a.overdue_days || daysSince(a.created_at)));
 
-    if (staleCountBadge) staleCountBadge.textContent = `${stale.length} متأخرة`;
+    if (staleCountBadge) staleCountBadge.textContent = `${stale.length} Overdue`;
+    if (navStaleCount) navStaleCount.textContent = stale.length;
 
     if (!stale || stale.length === 0) {
       if (staleTableBody) staleTableBody.innerHTML = '';
@@ -269,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (staleTableBody) {
       staleTableBody.innerHTML = stale.map((pr, idx) => {
-        const days = daysSince(pr.created_at);
+        const days = pr.overdue_days || daysSince(pr.created_at);
         return `
         <tr style="background: #fff7f7;">
           <td><span class="table-date-cell" style="font-weight: 800;">${idx + 1}</span></td>
@@ -298,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="table-date-cell">${formatTimestamp(pr.created_at)}</span>
           </td>
           <td>
-            <span class="pr-state-badge closed" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">⏳ ${days} أيام</span>
+            <span class="overdue-days-pill">⏳ ${days}d open</span>
           </td>
         </tr>
       `;
@@ -323,6 +348,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (dashTotalPrs) dashTotalPrs.textContent = data.total_prs || 0;
     if (dashTotalEngineers) dashTotalEngineers.textContent = data.total_engineers || 0;
+
+    // SLA threshold: single source of truth is the backend (.env) — sync it and
+    // refresh the standalone Overdue view labels so both stay consistent.
+    staleDaysThreshold = data.stale_threshold_days || staleDaysThreshold;
+    document.querySelectorAll('.stale-threshold-num').forEach(el => el.textContent = staleDaysThreshold);
+    renderStalePRs(allPRs);
 
     const list = data.leaderboard || [];
 
@@ -401,12 +432,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Load PRs from FastAPI backend
+  // Load PRs from FastAPI backend (also syncs the stale threshold from .env config)
   async function loadPullRequests() {
     try {
       const res = await fetch(`${API_BASE}/api/prs`);
       if (!res.ok) throw new Error('Failed to load PRs');
       const data = await res.json();
+      if (data.stale_threshold_days) staleDaysThreshold = data.stale_threshold_days;
       renderPRs(data.prs);
     } catch {
       // Backend unreachable fallback

@@ -38,6 +38,7 @@ services:
       - MYSQL_PASSWORD=cto_password_2026
       - MYSQL_DATABASE=cto_copilot_db
     volumes:
+      - ./app:/app/app
       - ./web:/app/web
     restart: unless-stopped
     depends_on:

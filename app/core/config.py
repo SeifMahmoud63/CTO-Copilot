@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     github_repo: str = Field(default="SeifMahmoud63/CTO-Copilot")
     github_api_url: str = Field(default="https://api.github.com")
     github_poll_interval_seconds: int = Field(default=30)
+    pr_stale_threshold_days: int = Field(default=5)
 
     # Bedrock
     bedrock_api_key: str = Field(default="")

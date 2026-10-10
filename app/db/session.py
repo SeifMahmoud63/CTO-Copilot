@@ -35,10 +35,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 async def init_db() -> bool:
-    """Create all tables asynchronously if they don't exist."""
+    """Create the 2-table schema (pull_requests, engineers), migrate old DBs, drop legacy tables."""
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            from sqlalchemy import text
+            # Migrate existing pull_requests tables to the 2-table schema
+            for ddl in (
+                "ALTER TABLE pull_requests ADD COLUMN is_overdue BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE pull_requests ADD COLUMN overdue_days INT DEFAULT 0",
+                "ALTER TABLE pull_requests ADD COLUMN summary_text TEXT NULL",
+                "ALTER TABLE pull_requests ADD COLUMN summary_provider VARCHAR(50) NULL",
+                "ALTER TABLE pull_requests ADD COLUMN summary_timestamp DATETIME NULL",
+                "ALTER TABLE pull_requests ADD COLUMN impact_score FLOAT NULL",
+                "ALTER TABLE pull_requests ADD COLUMN impact_tier VARCHAR(50) NULL",
+            ):
+                try:
+                    await conn.execute(text(ddl))
+                except Exception:
+                    pass  # column already exists
+            # Drop legacy tables from the old 5-table schema
+            for legacy in ("pr_summaries", "pr_impact_scores", "pr_approvals", "audit_logs"):
+                try:
+                    await conn.execute(text(f"DROP TABLE IF EXISTS {legacy}"))
+                except Exception:
+                    pass
         logger.info("MySQL async database tables initialized successfully.")
         return True
     except Exception as e:

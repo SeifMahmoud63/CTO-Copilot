@@ -1,7 +1,13 @@
-# Environment Variables
+# Environment Variables & secrets (keep .env.example tracked!)
 .env
+.env.*
 *.env
 .env.local
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
 
 # Python
 __pycache__/
@@ -31,13 +37,27 @@ wheels/
 .installed.cfg
 *.egg
 
+# Test / lint / coverage caches & logs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+logs/
+
+# Local database dumps (never commit data)
+*.sql
+*.dump
+*.sqlite3
+*.db
+
 # IDEs & OS
 .idea/
 .vscode/
+*.code-workspace
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
-
-# Docker
-.dockerignore
