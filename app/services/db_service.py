@@ -1,0 +1,312 @@
+import json
+import logging
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import AsyncSessionLocal, init_db as _init_db
+from app.models import PullRequest, PRSummary, ImpactScore, PRApproval, AuditLog
+
+logger = logging.getLogger("cto-copilot.db_service")
+
+class DatabaseService:
+    """
+    Async Database Service handling Pull Requests, Summaries,
+    Impact Scores, Approvals, and Audit Logs via SQLAlchemy.
+    """
+
+    async def init_db(self) -> bool:
+        """Initialize all tables asynchronously."""
+        return await _init_db()
+
+    async def save_or_update_pr(
+        self,
+        number: int,
+        title: str,
+        author: str,
+        state: str,
+        head_branch: str,
+        base_branch: str,
+        html_url: str,
+        diff_url: Optional[str] = None,
+        author_avatar: Optional[str] = None,
+        github_pr_id: Optional[int] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
+    ) -> Optional[PullRequest]:
+        """Insert or update a PR record in MySQL."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(PullRequest).where(PullRequest.number == number)
+                    res = await session.execute(stmt)
+                    pr = res.scalar_one_or_none()
+
+                    if pr:
+                        pr.title = title
+                        pr.author = author
+                        pr.state = state
+                        pr.head_branch = head_branch
+                        pr.base_branch = base_branch
+                        pr.html_url = html_url
+                        if diff_url:
+                            pr.diff_url = diff_url
+                        if author_avatar:
+                            pr.author_avatar = author_avatar
+                        if updated_at:
+                            pr.updated_at = updated_at
+                    else:
+                        pr = PullRequest(
+                            number=number,
+                            github_pr_id=github_pr_id,
+                            title=title,
+                            author=author,
+                            author_avatar=author_avatar,
+                            state=state,
+                            head_branch=head_branch,
+                            base_branch=base_branch,
+                            html_url=html_url,
+                            diff_url=diff_url,
+                            created_at=created_at or datetime.utcnow(),
+                            updated_at=updated_at
+                        )
+                        session.add(pr)
+
+                    await session.flush()
+                    await self._log_audit_internal(
+                        session=session,
+                        action="PR_UPSERTED",
+                        entity_type="PULL_REQUEST",
+                        entity_id=str(number),
+                        actor="SYSTEM",
+                        details=f"PR #{number} '{title}' saved with state '{state}'"
+                    )
+                    return pr
+        except Exception as e:
+            logger.warning(f"Error saving PR #{number} to MySQL: {e}")
+            return None
+
+    async def save_summary(
+        self,
+        pr_number: int,
+        summary_text: str,
+        provider: str = "BEDROCK",
+        model_name: str = "Qwen3-32B",
+        is_cached: bool = False
+    ) -> Optional[PRSummary]:
+        """Save a generated executive summary for a PR."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    # Find PR id
+                    stmt = select(PullRequest).where(PullRequest.number == pr_number)
+                    res = await session.execute(stmt)
+                    pr = res.scalar_one_or_none()
+                    if not pr:
+                        logger.warning(f"Cannot attach summary: PR #{pr_number} not found in DB.")
+                        return None
+
+                    summary = PRSummary(
+                        pr_id=pr.id,
+                        pr_number=pr_number,
+                        summary_text=summary_text,
+                        provider=provider,
+                        model_name=model_name,
+                        is_cached=is_cached
+                    )
+                    session.add(summary)
+                    await session.flush()
+
+                    await self._log_audit_internal(
+                        session=session,
+                        action="SUMMARY_SAVED",
+                        entity_type="SUMMARY",
+                        entity_id=str(pr_number),
+                        actor=provider,
+                        details=f"Summary generated by {provider} ({model_name}) for PR #{pr_number}"
+                    )
+                    return summary
+        except Exception as e:
+            logger.warning(f"Error saving summary for PR #{pr_number} to MySQL: {e}")
+            return None
+
+    async def save_impact_score(
+        self,
+        pr_number: int,
+        score: float,
+        tier: str = "Solid Contributor",
+        model_name: str = "jev-latest",
+        criteria_details: Optional[str] = None
+    ) -> Optional[ImpactScore]:
+        """Save a JEV impact score evaluation for a PR."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(PullRequest).where(PullRequest.number == pr_number)
+                    res = await session.execute(stmt)
+                    pr = res.scalar_one_or_none()
+                    if not pr:
+                        logger.warning(f"Cannot attach score: PR #{pr_number} not found in DB.")
+                        return None
+
+                    impact_record = ImpactScore(
+                        pr_id=pr.id,
+                        pr_number=pr_number,
+                        score=score,
+                        tier=tier,
+                        model_name=model_name,
+                        criteria_details=criteria_details
+                    )
+                    session.add(impact_record)
+                    await session.flush()
+
+                    await self._log_audit_internal(
+                        session=session,
+                        action="IMPACT_SCORED",
+                        entity_type="IMPACT_SCORE",
+                        entity_id=str(pr_number),
+                        actor="JEV",
+                        details=f"JEV scored PR #{pr_number} with {score}/10 ({tier})"
+                    )
+                    return impact_record
+        except Exception as e:
+            logger.warning(f"Error saving impact score for PR #{pr_number} to MySQL: {e}")
+            return None
+
+    async def save_approval(
+        self,
+        pr_number: int,
+        status: str,
+        decision_by: str = "CTO",
+        review_comment: Optional[str] = None
+    ) -> Optional[PRApproval]:
+        """Record an approval or decision on a PR."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(PullRequest).where(PullRequest.number == pr_number)
+                    res = await session.execute(stmt)
+                    pr = res.scalar_one_or_none()
+                    if not pr:
+                        logger.warning(f"Cannot record approval: PR #{pr_number} not found in DB.")
+                        return None
+
+                    approval = PRApproval(
+                        pr_id=pr.id,
+                        pr_number=pr_number,
+                        status=status,
+                        decision_by=decision_by,
+                        review_comment=review_comment
+                    )
+                    session.add(approval)
+                    await session.flush()
+
+                    await self._log_audit_internal(
+                        session=session,
+                        action=f"PR_{status.upper()}",
+                        entity_type="APPROVAL",
+                        entity_id=str(pr_number),
+                        actor=decision_by,
+                        details=f"Decision '{status}' registered by {decision_by} for PR #{pr_number}. Comment: {review_comment}"
+                    )
+                    return approval
+        except Exception as e:
+            logger.warning(f"Error saving approval for PR #{pr_number} to MySQL: {e}")
+            return None
+
+    async def log_audit(
+        self,
+        action: str,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+        actor: str = "SYSTEM",
+        details: Optional[str] = None
+    ) -> Optional[AuditLog]:
+        """Independent audit log writer."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    return await self._log_audit_internal(
+                        session=session,
+                        action=action,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
+                        actor=actor,
+                        details=details
+                    )
+        except Exception as e:
+            logger.warning(f"Error logging audit record: {e}")
+            return None
+
+    async def _log_audit_internal(
+        self,
+        session: AsyncSession,
+        action: str,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+        actor: str = "SYSTEM",
+        details: Optional[str] = None
+    ) -> AuditLog:
+        """Internal helper to insert into audit_logs within an open session."""
+        log_entry = AuditLog(
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            actor=actor,
+            details=details
+        )
+        session.add(log_entry)
+        return log_entry
+
+    async def get_audit_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieve recent audit logs in reverse chronological order."""
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
+                res = await session.execute(stmt)
+                logs = res.scalars().all()
+                return [
+                    {
+                        "id": log.id,
+                        "action": log.action,
+                        "entity_type": log.entity_type,
+                        "entity_id": log.entity_id,
+                        "actor": log.actor,
+                        "details": log.details,
+                        "created_at": log.created_at.isoformat() if log.created_at else None
+                    }
+                    for log in logs
+                ]
+        except Exception as e:
+            logger.warning(f"Error fetching audit logs: {e}")
+            return []
+
+    async def get_db_stats(self) -> Dict[str, int]:
+        """Get total record counts across all MySQL tables."""
+        try:
+            async with AsyncSessionLocal() as session:
+                prs_cnt = (await session.execute(select(func.count(PullRequest.id)))).scalar() or 0
+                sums_cnt = (await session.execute(select(func.count(PRSummary.id)))).scalar() or 0
+                scores_cnt = (await session.execute(select(func.count(ImpactScore.id)))).scalar() or 0
+                apps_cnt = (await session.execute(select(func.count(PRApproval.id)))).scalar() or 0
+                audits_cnt = (await session.execute(select(func.count(AuditLog.id)))).scalar() or 0
+
+                return {
+                    "total_prs": prs_cnt,
+                    "total_summaries": sums_cnt,
+                    "total_impact_scores": scores_cnt,
+                    "total_approvals": apps_cnt,
+                    "total_audit_logs": audits_cnt
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching DB stats: {e}")
+            return {
+                "total_prs": 0,
+                "total_summaries": 0,
+                "total_impact_scores": 0,
+                "total_approvals": 0,
+                "total_audit_logs": 0
+            }
+
+db_service = DatabaseService()

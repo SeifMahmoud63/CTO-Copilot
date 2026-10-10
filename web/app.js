@@ -20,7 +20,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidePullHandle = document.getElementById('sidePullHandle');
   const drawerPrBtn = document.getElementById('drawerPrBtn');
   const drawerDashBtn = document.getElementById('drawerDashBtn');
-  const drawerPrCount = document.getElementById('drawerPrCount');
+
+  // Stale table elements (> 5 days open)
+  const staleTableBody = document.getElementById('staleTableBody');
+  const staleEmptyState = document.getElementById('staleEmptyState');
+  const staleCountBadge = document.getElementById('staleCountBadge');
+  const STALE_DAYS_THRESHOLD = 5;
 
   // PR Filters
   const filterBtns = document.querySelectorAll('.filter-btn');
@@ -155,17 +160,28 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (score >= 6.0) levelClass = 'medium';
       else if (score >= 4.0) levelClass = 'moderate';
 
-      return `<span class="impact-badge ${levelClass}" title="Impact evaluated by JEV Decision Intelligence: ${score}/10">⚡ Impact: ${score}/10</span>`;
+      return `<span class="impact-badge ${levelClass}" title="Impact evaluated by JEV Decision Intelligence: ${score}/10">⚡ ${score}/10</span>`;
     }
-    return `<span class="impact-badge low" style="opacity: 0.7;" title="Impact score pending JEV evaluation">⚡ Impact: —</span>`;
+    return `<span class="impact-badge low" style="opacity: 0.7;" title="Impact score pending JEV evaluation">⚡ —</span>`;
   }
 
-  // Render Table View & Drawer View
+  // Days since creation (for stale detection)
+  function daysSince(isoStr) {
+    if (!isoStr) return 0;
+    try {
+      const created = new Date(isoStr);
+      const diffMs = Date.now() - created.getTime();
+      return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    } catch {
+      return 0;
+    }
+  }
+
+  // Render Table 1 — comprehensive: # | ID | Author | Created | Summary | State | Score | PR
   function renderPRs(prs) {
     allPRs = prs ? [...prs] : [];
     const totalCount = allPRs.length;
     if (navPrCount) navPrCount.textContent = totalCount;
-    if (drawerPrCount) drawerPrCount.textContent = totalCount;
 
     // Apply status filter: open, merged, closed
     const filtered = currentFilter === 'all'
@@ -187,17 +203,84 @@ document.addEventListener('DOMContentLoaded', () => {
           if (emptyDesc) emptyDesc.textContent = `There are no pull requests with status "${currentFilter}" right now. Try another filter.`;
         }
       }
+    } else if (tableEmptyState) {
+      tableEmptyState.style.display = 'none';
+
+      // Populate Table 1 — one row per PR with serial #, ID, author, date, summary, state, score
+      if (prsTableBody) {
+        prsTableBody.innerHTML = filtered.map((pr, idx) => `
+        <tr>
+          <td><span class="table-date-cell" style="font-weight: 800;">${idx + 1}</span></td>
+          <td><span class="branch-tag">#${pr.number}</span></td>
+          <td>
+            <div class="table-author-cell">
+              ${pr.author_avatar ? `<img src="${pr.author_avatar}" class="table-author-avatar" alt="${pr.author}"/>` : `<span class="table-author-avatar">${(pr.author || '?').slice(0, 2).toUpperCase()}</span>`}
+              <span>${escapeHtml(pr.author)}</span>
+            </div>
+          </td>
+          <td>
+            <span class="table-date-cell">${formatTimestamp(pr.created_at)}</span>
+          </td>
+          <td>
+            <div class="table-summary-box">
+              ${pr.summary ? escapeHtml(pr.summary) : '<em>Generating executive summary automatically...</em>'}
+            </div>
+          </td>
+          <td>
+            <span class="pr-state-badge ${pr.state}">${pr.state}</span>
+          </td>
+          <td>
+            ${renderImpactBadge(pr.impact_score)}
+          </td>
+          <td>
+            <a href="${pr.html_url}" target="_blank" rel="noopener noreferrer" class="table-pr-title" style="font-size: 0.82rem;">
+              ${escapeHtml(pr.title)}
+            </a>
+            <div class="table-pr-branches">
+              <span class="branch-tag">${escapeHtml(pr.base_branch)}</span>
+              <span>←</span>
+              <span class="branch-tag">${escapeHtml(pr.head_branch)}</span>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+      }
+    }
+
+    // Always refresh Table 3 (stale) from the full list, independent of the filter
+    renderStalePRs(allPRs);
+  }
+
+  // Render Table 3 — stale: open PRs older than STALE_DAYS_THRESHOLD days
+  function renderStalePRs(prs) {
+    const stale = (prs || [])
+      .filter((pr) => (pr.state || '').toLowerCase() === 'open' && daysSince(pr.created_at) >= STALE_DAYS_THRESHOLD)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (staleCountBadge) staleCountBadge.textContent = `${stale.length} متأخرة`;
+
+    if (!stale || stale.length === 0) {
+      if (staleTableBody) staleTableBody.innerHTML = '';
+      if (staleEmptyState) staleEmptyState.style.display = 'flex';
       return;
     }
 
-    if (tableEmptyState) tableEmptyState.style.display = 'none';
+    if (staleEmptyState) staleEmptyState.style.display = 'none';
 
-    // Populate Table View
-    if (prsTableBody) {
-      prsTableBody.innerHTML = filtered.map((pr) => `
-        <tr>
+    if (staleTableBody) {
+      staleTableBody.innerHTML = stale.map((pr, idx) => {
+        const days = daysSince(pr.created_at);
+        return `
+        <tr style="background: #fff7f7;">
+          <td><span class="table-date-cell" style="font-weight: 800;">${idx + 1}</span></td>
           <td>
-            <a href="${pr.html_url}" target="_blank" rel="noopener noreferrer" class="table-pr-title">
+            <div class="table-author-cell">
+              ${pr.author_avatar ? `<img src="${pr.author_avatar}" class="table-author-avatar" alt="${pr.author}"/>` : `<span class="table-author-avatar">${(pr.author || '?').slice(0, 2).toUpperCase()}</span>`}
+              <span>${escapeHtml(pr.author)}</span>
+            </div>
+          </td>
+          <td>
+            <a href="${pr.html_url}" target="_blank" rel="noopener noreferrer" class="table-pr-title" style="font-size: 0.82rem;">
               #${pr.number} ${escapeHtml(pr.title)}
             </a>
             <div class="table-pr-branches">
@@ -207,27 +290,19 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </td>
           <td>
-            <div class="table-author-cell">
-              ${pr.author_avatar ? `<img src="${pr.author_avatar}" class="table-author-avatar" alt="${pr.author}"/>` : `<span class="table-author-avatar">${pr.author.slice(0, 2).toUpperCase()}</span>`}
-              <span>${escapeHtml(pr.author)}</span>
-            </div>
-          </td>
-          <td>
             <div class="table-summary-box">
               ${pr.summary ? escapeHtml(pr.summary) : '<em>Generating executive summary automatically...</em>'}
             </div>
           </td>
           <td>
-            <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start;">
-              <span class="pr-state-badge ${pr.state}">${pr.state}</span>
-              ${renderImpactBadge(pr.impact_score)}
-            </div>
-          </td>
-          <td>
             <span class="table-date-cell">${formatTimestamp(pr.created_at)}</span>
           </td>
+          <td>
+            <span class="pr-state-badge closed" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">⏳ ${days} أيام</span>
+          </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
   }
 

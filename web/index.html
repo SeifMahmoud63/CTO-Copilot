@@ -165,11 +165,14 @@
             <table class="prs-table">
               <thead>
                 <tr>
-                  <th style="width: 24%;">PR Details</th>
-                  <th style="width: 15%;">Author</th>
-                  <th style="width: 35%;">Executive Summary</th>
-                  <th style="width: 16%;">Status & Impact</th>
-                  <th style="width: 10%;">Date</th>
+                  <th style="width: 4%;">#</th>
+                  <th style="width: 8%;">ID</th>
+                  <th style="width: 15%;">Author — الشخص</th>
+                  <th style="width: 13%;">Created — امتى اترفعت</th>
+                  <th style="width: 32%;">Summary — الملخص</th>
+                  <th style="width: 9%;">State — الحالة</th>
+                  <th style="width: 9%;">Score — الاسكور</th>
+                  <th style="width: 10%;">PR</th>
                 </tr>
 
               </thead>
@@ -190,6 +193,47 @@
             </div>
             <h4>No PRs Detected Yet</h4>
             <p>Pull requests will automatically populate here with full AI summaries once submitted on GitHub.</p>
+          </div>
+        </div>
+
+        <!-- STALE / DELAYED PRs TABLE (> 5 days open without review) -->
+        <div class="table-view-header" style="margin-top: 32px; margin-bottom: 16px;">
+          <div>
+            <div class="badge-pill" style="background: #fef2f2; color: #dc2626;">Delayed Review — تأخير</div>
+            <h2 style="font-size: 1.4rem;">Stale PRs — متأخرة أكتر من 5 أيام</h2>
+            <p class="table-view-sub">أي PR مفتوحة وعدى عليها 5 أيام من غير مراجعة بتظهر هنا مع تاريخ الرفع وعدد أيام التأخير.</p>
+          </div>
+          <span id="staleCountBadge" class="metric-chip neutral">0 متأخرة</span>
+        </div>
+
+        <div class="table-card" style="border-color: #fecaca;">
+          <div class="table-responsive">
+            <table class="prs-table">
+              <thead>
+                <tr>
+                  <th style="width: 4%;">#</th>
+                  <th style="width: 16%;">Author — الشخص</th>
+                  <th style="width: 24%;">PR — بتاعته</th>
+                  <th style="width: 32%;">Summary — الملخص</th>
+                  <th style="width: 12%;">Created — تاريخ الرفع</th>
+                  <th style="width: 12%;">Delayed — بقالها قد إيه</th>
+                </tr>
+              </thead>
+              <tbody id="staleTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="staleEmptyState" class="table-empty-state" style="display: flex;">
+            <div class="empty-icon-wrap">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <h4>لا يوجد PRs متأخرة</h4>
+            <p>كل الـ PRs المفتوحة لسه في أول 5 أيام — مفيش حاجة مركونة.</p>
           </div>
         </div>
       </section>
@@ -323,7 +367,6 @@
             </svg>
             <span>PR Requests</span>
           </div>
-          <span id="drawerPrCount" class="count-pill">0</span>
         </button>
 
         <button class="drawer-tab" id="drawerDashBtn" data-tab="dashboard" style="margin-top: 10px;">

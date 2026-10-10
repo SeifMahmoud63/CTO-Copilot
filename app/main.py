@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.enums import AppMessage
 from app.services.github_service import github_service
+from app.services.db_service import db_service
 from app.api.routes import router as api_router
 
 
@@ -63,6 +64,8 @@ async def auto_poll_prs():
 @app.on_event("startup")
 async def startup_event():
     logger.info(AppMessage.STARTUP.value)
+    # Initialize MySQL async tables
+    await db_service.init_db()
     asyncio.create_task(auto_poll_prs())
 
 if __name__ == "__main__":

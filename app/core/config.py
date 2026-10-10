@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -36,7 +37,6 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="openai/gpt-oss-20b")
     groq_backup_model: str = Field(default="openai/gpt-oss-120b")
 
-
     # Hyperparameters
     llm_temperature: float = Field(default=0.2)
     llm_max_tokens: int = Field(default=1024)
@@ -44,6 +44,23 @@ class Settings(BaseSettings):
     # Circuit Breaker
     circuit_breaker_cooldown_seconds: int = Field(default=1800)
     circuit_breaker_probe_prompt: str = Field(default="ping")
+
+    # MySQL Async Database
+    mysql_host: str = Field(default="mysql")
+    mysql_port: int = Field(default=3306)
+    mysql_user: str = Field(default="cto_user")
+    mysql_password: str = Field(default="cto_password_2026")
+    mysql_database: str = Field(default="cto_copilot_db")
+    database_url: Optional[str] = Field(default=None)
+
+    @property
+    def async_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return (
+            f"mysql+aiomysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
+        )
 
     # Application
     app_host: str = Field(default="0.0.0.0")

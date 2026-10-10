@@ -6,6 +6,7 @@ from app.schemas.pr_schema import PRListResponse, PRItem, CircuitBreakerStatus, 
 from app.services.github_service import github_service
 from app.services.circuit_breaker import circuit_breaker
 from app.services.llm_service import llm_service
+from app.services.db_service import db_service
 
 router = APIRouter(prefix="/api", tags=["PRs & AI Summary"])
 
@@ -61,4 +62,33 @@ async def github_webhook(request: Request):
             await github_service.summarize_pr(pr_number, force_refresh=True)
             return {"status": "summarized", "pr": pr_number}
     return {"status": "ignored"}
+
+@router.get("/db/stats")
+async def get_database_stats():
+    """Retrieve record counts from MySQL async tables (PRs, Summaries, Scores, Approvals, Audit Logs)."""
+    return await db_service.get_db_stats()
+
+@router.get("/db/audit-logs")
+async def get_audit_logs(limit: int = Query(default=50, ge=1, le=200)):
+    """Retrieve the recent audit log trail from MySQL."""
+    return await db_service.get_audit_logs(limit=limit)
+
+@router.post("/prs/{pr_number}/decision")
+async def record_pr_decision(
+    pr_number: int,
+    status: str = Query(..., pattern="^(APPROVED|CHANGES_REQUESTED|REJECTED|PENDING)$"),
+    decision_by: str = Query(default="CTO"),
+    review_comment: Optional[str] = None
+):
+    """Register an approval or review decision in MySQL."""
+    record = await db_service.save_approval(
+        pr_number=pr_number,
+        status=status,
+        decision_by=decision_by,
+        review_comment=review_comment
+    )
+    if not record:
+        raise HTTPException(status_code=400, detail=f"Failed to record decision for PR #{pr_number}")
+    return {"status": "success", "decision": status, "pr_number": pr_number, "by": decision_by}
+
 

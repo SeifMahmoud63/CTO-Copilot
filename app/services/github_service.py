@@ -8,8 +8,21 @@ from app.core.enums import PRStatus, UserPromptTemplate
 from app.schemas.pr_schema import PRItem, EngineerImpactStat, DashboardLeaderboardResponse
 from app.services.llm_service import llm_service
 from app.services.jev_service import jev_service
+from app.services.db_service import db_service
 
 logger = logging.getLogger(__name__)
+
+def _parse_github_dt(value: Optional[str]) -> Optional[datetime]:
+    """Parse GitHub ISO8601 string into naive UTC datetime for MySQL."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
 
 class GitHubService:
     def __init__(self):
@@ -53,7 +66,6 @@ class GitHubService:
                         except Exception as e:
                             logger.warning(f"Auto-summary generation failed for PR #{pr_number}: {e}")
 
-                    cached = self.summary_cache.get(pr_id, {})
                     pr_item = PRItem(
                         id=pr_id,
                         number=pr_number,
@@ -73,6 +85,25 @@ class GitHubService:
                         impact_score=cached.get("impact_score")
                     )
                     pr_items.append(pr_item)
+
+                    # Persist PR to MySQL asynchronously (state + timestamps sync from GitHub)
+                    try:
+                        await db_service.save_or_update_pr(
+                            number=pr_item.number,
+                            title=pr_item.title,
+                            author=pr_item.author,
+                            author_avatar=pr_item.author_avatar,
+                            state=pr_item.state.value if hasattr(pr_item.state, 'value') else str(pr_item.state),
+                            head_branch=pr_item.head_branch,
+                            base_branch=pr_item.base_branch,
+                            html_url=pr_item.html_url,
+                            diff_url=pr_item.diff_url,
+                            github_pr_id=pr_item.id,
+                            created_at=_parse_github_dt(item.get("created_at")),
+                            updated_at=_parse_github_dt(item.get("updated_at")),
+                        )
+                    except Exception as err:
+                        logger.debug(f"Async DB save_or_update_pr bypassed: {err}")
 
                 return pr_items
 
@@ -110,6 +141,7 @@ class GitHubService:
         pr_id = pr_data["id"]
         if not force_refresh and pr_id in self.summary_cache:
             cached = self.summary_cache[pr_id]
+            cached_state = PRStatus.MERGED if pr_data.get("merged_at") else PRStatus(pr_data["state"])
             return PRItem(
                 id=pr_id,
                 number=pr_data["number"],
@@ -117,7 +149,8 @@ class GitHubService:
                 author=pr_data.get("user", {}).get("login", "unknown"),
                 author_avatar=pr_data.get("user", {}).get("avatar_url"),
                 created_at=pr_data["created_at"],
-                state=PRStatus(pr_data["state"]),
+                updated_at=pr_data.get("updated_at"),
+                state=cached_state,
                 html_url=pr_data["html_url"],
                 head_branch=pr_data.get("head", {}).get("ref", "unknown"),
                 base_branch=pr_data.get("base", {}).get("ref", "main"),
@@ -140,7 +173,7 @@ class GitHubService:
         )
 
         # 2. Generate summary via Bedrock / Groq
-        summary_text, provider = llm_service.generate_pr_summary(prompt)
+        summary_text, provider, model_used = llm_service.generate_pr_summary(prompt)
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # 3. Evaluate impact score (1 to 10) via TypeSafe AI Jev decision model
@@ -153,6 +186,50 @@ class GitHubService:
             "impact_score": impact_score
         }
 
+        # Persist summary and impact score to MySQL asynchronously
+        try:
+            # Ensure PR exists in DB first (with merged-aware state + timestamps)
+            pr_state_str = (
+                PRStatus.MERGED.value if pr_data.get("merged_at")
+                else pr_data.get("state", "open")
+            )
+            await db_service.save_or_update_pr(
+                number=pr_data["number"],
+                title=pr_data["title"],
+                author=pr_data.get("user", {}).get("login", "unknown"),
+                author_avatar=pr_data.get("user", {}).get("avatar_url"),
+                state=pr_state_str,
+                head_branch=pr_data.get("head", {}).get("ref", "unknown"),
+                base_branch=pr_data.get("base", {}).get("ref", "main"),
+                html_url=pr_data["html_url"],
+                github_pr_id=pr_id,
+                created_at=_parse_github_dt(pr_data.get("created_at")),
+                updated_at=_parse_github_dt(pr_data.get("updated_at")),
+            )
+
+            await db_service.save_summary(
+                pr_number=pr_data["number"],
+                summary_text=summary_text,
+                provider=provider.value if hasattr(provider, 'value') else str(provider),
+                model_name=model_used
+            )
+
+            if impact_score is not None:
+                tier = (
+                    "Critical Driver" if impact_score >= 8.0
+                    else "High Impact" if impact_score >= 6.5
+                    else "Solid Contributor" if impact_score >= 5.0
+                    else "Routine Support"
+                )
+                await db_service.save_impact_score(
+                    pr_number=pr_data["number"],
+                    score=impact_score,
+                    tier=tier,
+                    model_name=settings.jev_model
+                )
+        except Exception as db_err:
+            logger.debug(f"Async DB save summary/impact bypassed: {db_err}")
+
         return PRItem(
             id=pr_id,
             number=pr_data["number"],
@@ -160,7 +237,8 @@ class GitHubService:
             author=pr_data.get("user", {}).get("login", "unknown"),
             author_avatar=pr_data.get("user", {}).get("avatar_url"),
             created_at=pr_data["created_at"],
-            state=PRStatus(pr_data["state"]),
+            updated_at=pr_data.get("updated_at"),
+            state=PRStatus.MERGED if pr_data.get("merged_at") else PRStatus(pr_data["state"]),
             html_url=pr_data["html_url"],
             head_branch=pr_data.get("head", {}).get("ref", "unknown"),
             base_branch=pr_data.get("base", {}).get("ref", "main"),
