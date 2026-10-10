@@ -5,10 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const prsView = document.getElementById('prsView');
   const dashboardView = document.getElementById('dashboardView');
   const staleView = document.getElementById('staleView');
+  const chatView = document.getElementById('chatView');
   const navHomeBtn = document.getElementById('navHomeBtn');
   const navPrsBtn = document.getElementById('navPrsBtn');
   const navDashBtn = document.getElementById('navDashBtn');
   const navStaleBtn = document.getElementById('navStaleBtn');
+  const navChatBtn = document.getElementById('navChatBtn');
   const navPrCount = document.getElementById('navPrCount');
   const navStaleCount = document.getElementById('navStaleCount');
   const refreshTableBtn = document.getElementById('refreshTableBtn');
@@ -25,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const drawerPrBtn = document.getElementById('drawerPrBtn');
   const drawerDashBtn = document.getElementById('drawerDashBtn');
   const drawerStaleBtn = document.getElementById('drawerStaleBtn');
+  const drawerChatBtn = document.getElementById('drawerChatBtn');
 
   // Stale table elements (threshold synced from backend /api/prs, configured via PR_STALE_THRESHOLD_DAYS)
   const staleTableBody = document.getElementById('staleTableBody');
@@ -45,10 +48,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const leaderboardTableBody = document.getElementById('leaderboardTableBody');
   const dashEmptyState = document.getElementById('dashEmptyState');
 
+  // Chatbot elements
+  const chatSessionsList = document.getElementById('chatSessionsList');
+  const btnNewChat = document.getElementById('btnNewChat');
+  const activeChatTitle = document.getElementById('activeChatTitle');
+  const chatMessagesContainer = document.getElementById('chatMessagesContainer');
+  const chatTypingIndicator = document.getElementById('chatTypingIndicator');
+  const chatInputForm = document.getElementById('chatInputForm');
+  const chatInput = document.getElementById('chatInput');
+  const chatSendBtn = document.getElementById('chatSendBtn');
+
   // State
   let allPRs = [];
   let currentFilter = 'all';
   let currentDays = 30;
+  let activeSessionId = null;
+  let chatSessions = [];
 
   // Automatically connect to FastAPI backend at port 8000
   const API_BASE = (window.location.protocol.startsWith('http') && window.location.port === '8000')
@@ -62,10 +77,12 @@ document.addEventListener('DOMContentLoaded', () => {
     prsView?.classList.remove('active');
     dashboardView?.classList.remove('active');
     staleView?.classList.remove('active');
+    chatView?.classList.remove('active');
     navHomeBtn?.classList.remove('active');
     navPrsBtn?.classList.remove('active');
     navDashBtn?.classList.remove('active');
     navStaleBtn?.classList.remove('active');
+    navChatBtn?.classList.remove('active');
 
     if (viewName === 'prs') {
       prsView?.classList.add('active');
@@ -79,6 +96,10 @@ document.addEventListener('DOMContentLoaded', () => {
       staleView?.classList.add('active');
       navStaleBtn?.classList.add('active');
       loadPullRequests();
+    } else if (viewName === 'chat') {
+      chatView?.classList.add('active');
+      navChatBtn?.classList.add('active');
+      loadChatSessions();
     } else {
       homeView?.classList.add('active');
       navHomeBtn?.classList.add('active');
@@ -89,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   navPrsBtn?.addEventListener('click', () => switchView('prs'));
   navDashBtn?.addEventListener('click', () => switchView('dashboard'));
   navStaleBtn?.addEventListener('click', () => switchView('stale'));
+  navChatBtn?.addEventListener('click', () => switchView('chat'));
 
   // Drawer buttons switch views directly
   drawerPrBtn?.addEventListener('click', () => {
@@ -104,6 +126,11 @@ document.addEventListener('DOMContentLoaded', () => {
   drawerStaleBtn?.addEventListener('click', () => {
     closeDrawer();
     switchView('stale');
+  });
+
+  drawerChatBtn?.addEventListener('click', () => {
+    closeDrawer();
+    switchView('chat');
   });
 
   // Drawer open / close
@@ -252,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </td>
           <td>
             <span class="pr-state-badge ${pr.state}">${pr.state}</span>
+            ${pr.is_overdue ? `<span class="overdue-pill" title="Overdue SLA threshold exceeded">⚠️ Overdue (${pr.overdue_days || daysSince(pr.created_at)}d)</span>` : ''}
           </td>
           <td>
             ${renderImpactBadge(pr.impact_score)}
@@ -455,6 +483,336 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPullRequests();
   }, 25000);
 
+  // =========================================================================
+  // Chatbot & LangGraph Read-Only MySQL Controller
+  // =========================================================================
+
+  async function loadChatSessions() {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sessions`);
+      if (!res.ok) throw new Error('Failed to load chat sessions');
+      const data = await res.json();
+      chatSessions = data.sessions || [];
+      renderSessionsList(chatSessions);
+
+      if (chatSessions.length === 0) {
+        // Automatically create first session
+        await createNewChatSession();
+      } else if (!activeSessionId || !chatSessions.some(s => s.id === activeSessionId)) {
+        // Select the most recent session
+        selectChatSession(chatSessions[0].id);
+      }
+    } catch (err) {
+      console.warn('Chat sessions fetch error:', err);
+    }
+  }
+
+  function renderSessionsList(sessions) {
+    if (!chatSessionsList) return;
+    if (!sessions || sessions.length === 0) {
+      chatSessionsList.innerHTML = '<div style="padding: 16px; font-size: 0.78rem; color: #94a3b8; text-align: center;">No conversations yet</div>';
+      return;
+    }
+
+    chatSessionsList.innerHTML = sessions.map(s => {
+      const isActive = s.id === activeSessionId ? 'active' : '';
+      const timeStr = s.created_at ? formatTimestamp(s.created_at) : '';
+      return `
+        <div class="session-item ${isActive}" data-id="${s.id}">
+          <div class="session-item-content">
+            <span class="session-item-title">${escapeHtml(s.title || 'Conversation')}</span>
+            <span class="session-item-time">${timeStr}</span>
+          </div>
+          <button class="session-delete-btn" data-delete-id="${s.id}" title="Delete session">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    // Attach click events
+    chatSessionsList.querySelectorAll('.session-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.session-delete-btn')) return;
+        const sId = item.dataset.id;
+        selectChatSession(sId);
+      });
+    });
+
+    chatSessionsList.querySelectorAll('.session-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sId = btn.dataset.deleteId;
+        deleteChatSession(sId);
+      });
+    });
+  }
+
+  async function createNewChatSession() {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Conversation' })
+      });
+      if (!res.ok) throw new Error('Failed to create session');
+      const newSession = await res.json();
+      activeSessionId = newSession.id;
+      await loadChatSessions();
+      selectChatSession(newSession.id);
+    } catch (err) {
+      console.error('Error creating chat session:', err);
+    }
+  }
+
+  async function deleteChatSession(sessionId) {
+    if (!confirm('Are you sure you want to delete this conversation?')) return;
+    try {
+      await fetch(`${API_BASE}/api/chat/sessions/${sessionId}`, { method: 'DELETE' });
+      if (activeSessionId === sessionId) {
+        activeSessionId = null;
+      }
+      await loadChatSessions();
+    } catch (err) {
+      console.error('Error deleting session:', err);
+    }
+  }
+
+  async function selectChatSession(sessionId) {
+    activeSessionId = sessionId;
+    const sessionObj = chatSessions.find(s => s.id === sessionId);
+    if (activeChatTitle && sessionObj) {
+      activeChatTitle.textContent = sessionObj.title || 'Conversation';
+    }
+
+    // Highlight in list
+    document.querySelectorAll('.session-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === sessionId);
+    });
+
+    await loadSessionMessages(sessionId);
+  }
+
+  async function loadSessionMessages(sessionId) {
+    if (!chatMessagesContainer) return;
+    chatMessagesContainer.innerHTML = '';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sessions/${sessionId}/messages`);
+      if (!res.ok) throw new Error('Failed to fetch messages');
+      const data = await res.json();
+      const messages = data.messages || [];
+
+      if (messages.length === 0) {
+        // Render welcome message
+        chatMessagesContainer.innerHTML = `
+          <div class="chat-bubble assistant">
+            <div class="bubble-avatar">🤖</div>
+            <div class="bubble-content">
+              <p><strong>Hello! I am your autonomous CTO Copilot.</strong></p>
+              <p>I have direct, secure <strong>read-only access to the MySQL database</strong> (<code>pull_requests</code> and <code>engineers</code>). You can ask me anything about:</p>
+              <ul>
+                <li>Open and overdue pull requests</li>
+                <li>Architectural impact scores and summaries</li>
+                <li>Contributor rankings, tiers, and velocities</li>
+                <li>General engineering leadership and codebase questions</li>
+              </ul>
+              <p style="margin-top: 8px; color: #64748b; font-size: 0.8rem;">Click a prompt above or type your question below to begin!</p>
+            </div>
+          </div>
+        `;
+      } else {
+        renderMessages(messages);
+      }
+      scrollChatToBottom();
+    } catch (err) {
+      console.warn('Error loading messages:', err);
+    }
+  }
+
+  function renderMessages(messages) {
+    if (!chatMessagesContainer) return;
+    chatMessagesContainer.innerHTML = messages.map(m => {
+      const isUser = m.role === 'user';
+      const avatar = isUser ? '👤' : '🤖';
+      const formattedContent = isUser ? escapeHtml(m.content) : renderMarkdown(m.content);
+      return `
+        <div class="chat-bubble ${isUser ? 'user' : 'assistant'}">
+          <div class="bubble-avatar">${avatar}</div>
+          <div class="bubble-content">${formattedContent}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function sendChatMessage(text) {
+    if (!text || !text.trim() || !activeSessionId) return;
+    const cleanText = text.trim();
+
+    // 1. Immediately append user bubble to UI
+    appendMessageBubble('user', cleanText);
+    scrollChatToBottom();
+
+    // 2. Clear input
+    if (chatInput) {
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+    }
+
+    // 3. Show typing indicator
+    if (chatTypingIndicator) chatTypingIndicator.style.display = 'flex';
+    if (chatSendBtn) chatSendBtn.disabled = true;
+    scrollChatToBottom();
+
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sessions/${activeSessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: cleanText })
+      });
+      if (!res.ok) throw new Error('Agent failed to respond');
+      const data = await res.json();
+
+      // 4. Append assistant bubble
+      appendMessageBubble('assistant', data.reply);
+      scrollChatToBottom();
+
+      // Refresh sessions to sync updated title
+      const sessRes = await fetch(`${API_BASE}/api/chat/sessions`);
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        chatSessions = sessData.sessions || [];
+        renderSessionsList(chatSessions);
+        const curr = chatSessions.find(s => s.id === activeSessionId);
+        if (curr && activeChatTitle) activeChatTitle.textContent = curr.title;
+      }
+    } catch (err) {
+      appendMessageBubble('assistant', `⚠️ Error: Could not get a response from the agent. (${err.message})`);
+    } finally {
+      if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
+      if (chatSendBtn) chatSendBtn.disabled = false;
+      scrollChatToBottom();
+    }
+  }
+
+  function appendMessageBubble(role, content) {
+    if (!chatMessagesContainer) return;
+    const isUser = role === 'user';
+    const avatar = isUser ? '👤' : '🤖';
+    const formattedContent = isUser ? escapeHtml(content) : renderMarkdown(content);
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${isUser ? 'user' : 'assistant'}`;
+    bubble.innerHTML = `
+      <div class="bubble-avatar">${avatar}</div>
+      <div class="bubble-content">${formattedContent}</div>
+    `;
+    chatMessagesContainer.appendChild(bubble);
+  }
+
+  function scrollChatToBottom() {
+    if (chatMessagesContainer) {
+      chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    }
+  }
+
+  // Quick chip suggestion clicks
+  document.querySelectorAll('.quick-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const prompt = chip.dataset.prompt;
+      if (prompt) sendChatMessage(prompt);
+    });
+  });
+
+  // Chat Form Submit
+  chatInputForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const val = chatInput?.value || '';
+    sendChatMessage(val);
+  });
+
+  // Chat Textarea Enter to submit (Shift+Enter for newline)
+  chatInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage(chatInput.value);
+    }
+  });
+
+  // Auto-resize chat textarea
+  chatInput?.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  });
+
+  btnNewChat?.addEventListener('click', () => {
+    createNewChatSession();
+  });
+
+  // Basic Markdown Renderer for LLM answers (tables, code, lists, bold)
+  function renderMarkdown(md) {
+    if (!md) return '';
+    let html = escapeHtml(md);
+
+    // Code blocks
+    html = html.replace(/```([a-zA-Z]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      return `<pre><code>${code.trim()}</code></pre>`;
+    });
+
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bold
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Italic
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Markdown tables
+    const tableRegex = /((?:\|[^\n]+\|\r?\n)+)/g;
+    html = html.replace(tableRegex, (match) => {
+      const rows = match.trim().split(/\r?\n/).map(r => r.trim());
+      if (rows.length < 2) return match;
+
+      let tableHtml = '<table>';
+      let isHeader = true;
+
+      rows.forEach((row, i) => {
+        // Skip separator rows like |---|---|
+        if (/^\|[\s\-:|]+\|$/.test(row)) {
+          isHeader = false;
+          return;
+        }
+
+        const cols = row.split('|').slice(1, -1).map(c => c.trim());
+        tableHtml += '<tr>';
+        cols.forEach(col => {
+          if (isHeader) {
+            tableHtml += `<th>${col}</th>`;
+          } else {
+            tableHtml += `<td>${col}</td>`;
+          }
+        });
+        tableHtml += '</tr>';
+        if (i === 0) isHeader = false;
+      });
+
+      tableHtml += '</table>';
+      return tableHtml;
+    });
+
+    // Paragraphs & line breaks
+    html = html.split(/\n\n+/).map(p => {
+      if (p.startsWith('<pre>') || p.startsWith('<table>')) return p;
+      return `<p>${p.replace(/\n/g, '<br/>')}</p>`;
+    }).join('');
+
+    return html;
+  }
+
   function escapeHtml(text) {
     if (!text) return '';
     return text
@@ -465,3 +823,4 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/'/g, "&#039;");
   }
 });
+

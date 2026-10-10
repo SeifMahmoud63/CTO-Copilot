@@ -73,4 +73,46 @@ async def list_engineers():
     """List engineers with PR count, total score and average score from MySQL."""
     return {"engineers": await db_service.get_engineers()}
 
+# ----------------- Chatbot & LangGraph Endpoints ----------------- #
+
+from pydantic import BaseModel
+from typing import Optional
+from app.services.chat_service import chat_service
+
+class CreateSessionRequest(BaseModel):
+    title: Optional[str] = None
+
+class SendMessageRequest(BaseModel):
+    message: str
+
+@router.get("/chat/sessions")
+async def list_chat_sessions():
+    """List all user chat sessions."""
+    return {"sessions": await chat_service.list_sessions()}
+
+@router.post("/chat/sessions")
+async def create_chat_session(payload: Optional[CreateSessionRequest] = None):
+    """Create a new chat session."""
+    title = payload.title if payload else None
+    return await chat_service.create_session(title=title)
+
+@router.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """Get message history for a specific session."""
+    return {"messages": await chat_service.get_session_messages(session_id)}
+
+@router.delete("/chat/sessions/{session_id}")
+async def delete_chat_session(session_id: str):
+    """Delete a chat session."""
+    success = await chat_service.delete_session(session_id)
+    return {"success": success}
+
+@router.post("/chat/sessions/{session_id}/message")
+async def send_chat_message(session_id: str, payload: SendMessageRequest):
+    """Send a message to the LangGraph read-only MySQL agent."""
+    if not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    return await chat_service.send_message(session_id, payload.message.strip())
+
+
 

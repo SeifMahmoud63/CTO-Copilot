@@ -15,9 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source and web UI
+# Copy application source, web UI and Alembic migrations
 COPY app/ ./app/
 COPY web/ ./web/
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
 
 # Expose default port
 EXPOSE 8000

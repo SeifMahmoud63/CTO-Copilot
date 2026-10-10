@@ -37,6 +37,9 @@
           <span>Overdue</span>
           <span id="navStaleCount" class="nav-counter">0</span>
         </button>
+        <button id="navChatBtn" class="nav-btn">
+          <span>Chatbot</span>
+        </button>
       </nav>
 
 
@@ -340,6 +343,84 @@
           </div>
         </div>
       </section>
+
+      <!-- CHATBOT VIEW (LANGGRAPH AGENT WITH MYSQL READ-ONLY) -->
+      <section id="chatView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">Autonomous LangGraph Agent</div>
+            <h2>CTO AI Copilot & Live DB Assistant</h2>
+            <p class="table-view-sub">Ask questions about pull requests, team velocity, and metrics with real-time MySQL read-only intelligence.</p>
+          </div>
+          <div class="chat-agent-status-badges">
+            <span class="chat-badge-pill green">🟢 Bedrock Qwen</span>
+            <span class="chat-badge-pill blue">🔒 MySQL Read-Only</span>
+          </div>
+        </div>
+
+        <div class="chat-container-card">
+          <!-- Left: Sessions Sidebar -->
+          <div class="chat-sessions-sidebar">
+            <div class="chat-sessions-header">
+              <span class="chat-sessions-title">Conversations</span>
+              <button id="btnNewChat" class="btn-new-chat" title="Create new session">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>New Chat</span>
+              </button>
+            </div>
+            <div id="chatSessionsList" class="chat-sessions-list">
+              <!-- Dynamically populated sessions -->
+            </div>
+          </div>
+
+          <!-- Right: Active Chat Area -->
+          <div class="chat-main-area">
+            <div class="chat-active-header">
+              <div class="chat-header-info">
+                <div class="chat-bot-avatar">🤖</div>
+                <div>
+                  <h4 id="activeChatTitle">New Conversation</h4>
+                  <span class="chat-header-meta">Powered by Bedrock Qwen & LangGraph StateGraph • Connected to MySQL</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Questions Bar -->
+            <div class="chat-quick-suggestions">
+              <span class="quick-chip" data-prompt="Which PRs are currently open and overdue in the database?">⚠️ Overdue PRs</span>
+              <span class="quick-chip" data-prompt="Who is the top contributor on the leaderboard?">🏆 Top Contributor</span>
+              <span class="quick-chip" data-prompt="Show all pull requests with their author and impact score in a table.">📊 All PRs Table</span>
+              <span class="quick-chip" data-prompt="Summarize PR #4 and explain its architectural impact.">🔍 PR #4 Analysis</span>
+            </div>
+
+            <!-- Messages Stream -->
+            <div id="chatMessagesContainer" class="chat-messages-container">
+              <!-- Dynamically populated messages -->
+            </div>
+
+            <!-- Typing Indicator -->
+            <div id="chatTypingIndicator" class="chat-typing-indicator" style="display: none;">
+              <div class="typing-bubble">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+              </div>
+              <span class="typing-label">Querying database & generating response...</span>
+            </div>
+
+            <!-- Input Bar -->
+            <form id="chatInputForm" class="chat-input-form">
+              <textarea id="chatInput" class="chat-input" placeholder="Ask anything about pull requests, contributors, impact scores..." rows="1"></textarea>
+              <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
     </main>
 
 
@@ -401,6 +482,15 @@
               <polyline points="12 6 12 12 16 14"/>
             </svg>
             <span>Overdue</span>
+          </div>
+        </button>
+
+        <button class="drawer-tab" id="drawerChatBtn" data-tab="chat" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Chatbot (AI Agent)</span>
           </div>
         </button>
       </div>

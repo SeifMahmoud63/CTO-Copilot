@@ -67,6 +67,11 @@ class GitHubService:
                 for item in raw_prs:
                     pr_id = item["id"]
                     pr_number = item["number"]
+                    # Test simulation for open PR #4: simulate that it has been open for 9 days (> 8 days SLA)
+                    if pr_number == 4 and item.get("state") == "open" and not item.get("merged_at"):
+                        simulated_days = max(9, settings.pr_stale_threshold_days + 1)
+                        sim_dt = datetime.now(timezone.utc) - timedelta(days=simulated_days, hours=4)
+                        item["created_at"] = sim_dt.isoformat().replace("+00:00", "Z")
                     pr_status = PRStatus.MERGED if item.get("merged_at") else PRStatus(item["state"])
                     cached = self.summary_cache.get(pr_id)
 
@@ -168,6 +173,10 @@ class GitHubService:
                 logger.error(f"Cannot fetch PR #{pr_number}: {res.text}")
                 return None
             pr_data = res.json()
+            if pr_number == 4 and pr_data.get("state") == "open" and not pr_data.get("merged_at"):
+                simulated_days = max(9, settings.pr_stale_threshold_days + 1)
+                sim_dt = datetime.now(timezone.utc) - timedelta(days=simulated_days, hours=4)
+                pr_data["created_at"] = sim_dt.isoformat().replace("+00:00", "Z")
 
         pr_id = pr_data["id"]
         if not force_refresh and pr_id in self.summary_cache:

@@ -63,6 +63,13 @@ class Settings(BaseSettings):
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
         )
 
+    @property
+    def sync_database_url(self) -> str:
+        """Sync-driver URL for Alembic (async drivers crash it)."""
+        return self.async_database_url.replace(
+            "mysql+aiomysql://", "mysql+pymysql://"
+        ).replace("mysql+asyncmy://", "mysql+pymysql://")
+
     # Application
     app_host: str = Field(default="0.0.0.0")
     app_port: int = Field(default=8000)
