@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navPrCount) navPrCount.textContent = totalCount;
     if (drawerPrCount) drawerPrCount.textContent = totalCount;
 
-    // Apply status filter: open = متعلّقة, merged = مندمجة, closed = مقفولة
+    // Apply status filter: open, merged, closed
     const filtered = currentFilter === 'all'
       ? allPRs
       : allPRs.filter((pr) => (pr.state || '').toLowerCase() === currentFilter);

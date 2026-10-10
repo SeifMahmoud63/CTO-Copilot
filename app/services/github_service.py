@@ -241,6 +241,7 @@ class GitHubService:
             stat.rank = idx + 1
 
         label_map = {
+            1: "Today",
             7: "Last 7 Days",
             14: "Last 14 Days",
             30: "Last 30 Days",
