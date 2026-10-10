@@ -25,8 +25,16 @@
       </div>
 
       <nav class="top-nav">
-        <a href="#home" class="nav-link active">Home</a>
+        <button id="navHomeBtn" class="nav-btn active">Home</button>
+        <button id="navPrsBtn" class="nav-btn">
+          <span>PR Requests</span>
+          <span id="navPrCount" class="nav-counter">0</span>
+        </button>
+        <button id="navDashBtn" class="nav-btn">
+          <span>Dashboard</span>
+        </button>
       </nav>
+
 
       <div class="top-actions">
         <div class="status-indicator">
@@ -44,7 +52,8 @@
     </header>
 
     <main class="main-content">
-      <section class="hero-section">
+      <!-- HOME VIEW -->
+      <section id="homeView" class="view-section active">
         <div class="hero-header">
           <span class="badge-pill">CTO Executive Overview</span>
           <h1>Team Velocity & Engineering Pulse</h1>
@@ -127,7 +136,154 @@
           </div>
         </div>
       </section>
+
+      <!-- DEDICATED PR REQUESTS TABLE VIEW -->
+      <section id="prsView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">Automated PR Intelligence</div>
+            <h2>Pull Requests Directory</h2>
+            <p class="table-view-sub">Track team submissions, code changes, and executive AI summaries in real-time.</p>
+          </div>
+          <button id="refreshTableBtn" class="btn-refresh-table" title="Sync from GitHub">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+            </svg>
+            <span>Refresh PRs</span>
+          </button>
+        </div>
+
+        <div class="pr-filter-bar" id="prFilterBar">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="open">Open</button>
+          <button class="filter-btn" data-filter="merged">Merged</button>
+          <button class="filter-btn" data-filter="closed">Closed</button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-responsive">
+            <table class="prs-table">
+              <thead>
+                <tr>
+                  <th style="width: 24%;">PR Details</th>
+                  <th style="width: 15%;">Author</th>
+                  <th style="width: 35%;">Executive Summary</th>
+                  <th style="width: 16%;">Status & Impact</th>
+                  <th style="width: 10%;">Date</th>
+                </tr>
+
+              </thead>
+              <tbody id="prsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="tableEmptyState" class="table-empty-state">
+            <div class="empty-icon-wrap">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="18" r="3"/>
+                <circle cx="6" cy="6" r="3"/>
+                <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
+                <line x1="6" y1="9" x2="6" y2="21"/>
+              </svg>
+            </div>
+            <h4>No PRs Detected Yet</h4>
+            <p>Pull requests will automatically populate here with full AI summaries once submitted on GitHub.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TEAM IMPACT & LEADERBOARD DASHBOARD VIEW -->
+      <section id="dashboardView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">CTO Team Analytics</div>
+            <h2>Engineer Impact & Output Dashboard</h2>
+            <p class="table-view-sub">Ranked by code & architectural impact (evaluated via JEV) rather than raw commit quantity.</p>
+          </div>
+        </div>
+
+        <!-- Timeframe Filter Tabs -->
+        <div class="timeframe-bar">
+          <span class="timeframe-label">Time Window:</span>
+          <div class="timeframe-buttons">
+            <button class="timeframe-btn" data-days="1">Today</button>
+            <button class="timeframe-btn" data-days="7">7 Days</button>
+            <button class="timeframe-btn" data-days="14">14 Days</button>
+            <button class="timeframe-btn active" data-days="30">30 Days</button>
+            <button class="timeframe-btn" data-days="90">3 Months</button>
+            <button class="timeframe-btn" data-days="180">6 Months</button>
+            <button class="timeframe-btn" data-days="270">9 Months</button>
+            <button class="timeframe-btn" data-days="365">1 Year</button>
+          </div>
+        </div>
+
+        <!-- Metrics Overview Cards -->
+        <div class="dashboard-metrics-grid">
+          <div class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Total Pull Requests</span>
+              <span id="dashTimeframeBadge" class="metric-chip neutral">Last 30 Days</span>
+            </div>
+            <div id="dashTotalPrs" class="metric-value">0</div>
+            <div class="metric-foot">Within selected window</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Active Contributors</span>
+              <span class="metric-chip positive">Engineers</span>
+            </div>
+            <div id="dashTotalEngineers" class="metric-value">0</div>
+            <div class="metric-foot">Authored pull requests</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-top">
+              <span class="metric-label">Top Impact Contributor</span>
+              <span class="metric-chip positive">Rank #1</span>
+            </div>
+            <div id="dashTopContributor" class="metric-value">—</div>
+            <div id="dashTopScore" class="metric-foot">Leading architectural impact</div>
+          </div>
+        </div>
+
+        <!-- Leaderboard Table Card -->
+        <div class="table-card" style="margin-top: 24px;">
+          <div class="table-responsive">
+            <table class="prs-table">
+              <thead>
+                <tr>
+                  <th style="width: 10%;">Rank</th>
+                  <th style="width: 24%;">Engineer</th>
+                  <th style="width: 14%;">PRs Count</th>
+                  <th style="width: 22%;">Avg Impact (1-10)</th>
+                  <th style="width: 15%;">Total Impact Pts</th>
+                  <th style="width: 15%;">Impact Tier</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="dashEmptyState" class="table-empty-state">
+            <div class="empty-icon-wrap">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+            </div>
+            <h4>No Activity in This Timeframe</h4>
+            <p>Try selecting a broader timeframe (e.g., 3 Months, 6 Months, or 1 Year).</p>
+          </div>
+        </div>
+      </section>
     </main>
+
 
     <!-- Slide-out Right Edge Pull Tab -->
     <div id="sidePullHandle" class="side-pull-handle" title="Pull open side panel">
@@ -143,12 +299,10 @@
       <div class="drawer-header">
         <div class="drawer-title-group">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="18" r="3"/>
-            <circle cx="6" cy="6" r="3"/>
-            <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-            <line x1="6" y1="9" x2="6" y2="21"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
           </svg>
-          <h3>Workspace Drawer</h3>
+          <h3>Workspace Menu</h3>
         </div>
         <button id="closeDrawerBtn" class="icon-btn" aria-label="Close panel">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -159,7 +313,7 @@
       </div>
 
       <div class="drawer-nav">
-        <button class="drawer-tab active" data-tab="pr-requests">
+        <button class="drawer-tab" id="drawerPrBtn" data-tab="pr-requests">
           <div class="tab-label-group">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="18" cy="18" r="3"/>
@@ -169,29 +323,23 @@
             </svg>
             <span>PR Requests</span>
           </div>
-          <span class="count-pill">0</span>
+          <span id="drawerPrCount" class="count-pill">0</span>
+        </button>
+
+        <button class="drawer-tab" id="drawerDashBtn" data-tab="dashboard" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            <span>Dashboard</span>
+          </div>
         </button>
       </div>
 
-      <div class="drawer-content">
-        <div id="prRequestsPanel" class="tab-pane active">
 
-          <div id="prListContainer" class="pr-cards-list"></div>
 
-          <div id="emptyPrState" class="empty-state">
-            <div class="empty-icon-wrap">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="18" cy="18" r="3"/>
-                <circle cx="6" cy="6" r="3"/>
-                <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-                <line x1="6" y1="9" x2="6" y2="21"/>
-              </svg>
-            </div>
-            <h4>No PR Requests</h4>
-          </div>
-
-        </div>
-      </div>
 
     </aside>
   </div>
