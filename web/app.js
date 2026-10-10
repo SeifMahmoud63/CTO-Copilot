@@ -277,6 +277,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Render Table 3 — stale: open PRs older than the backend-configured threshold
   function renderStalePRs(prs) {
+    // Keep the "(X days)" label in sync wherever this table renders
+    document.querySelectorAll('.stale-threshold-num').forEach(el => el.textContent = staleDaysThreshold);
+
     const stale = (prs || [])
       .filter((pr) => pr.is_overdue || ((pr.state || '').toLowerCase() === 'open' && daysSince(pr.created_at) >= staleDaysThreshold))
       .sort((a, b) => (b.overdue_days || daysSince(b.created_at)) - (a.overdue_days || daysSince(a.created_at)));
@@ -349,10 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dashTotalPrs) dashTotalPrs.textContent = data.total_prs || 0;
     if (dashTotalEngineers) dashTotalEngineers.textContent = data.total_engineers || 0;
 
-    // SLA threshold: single source of truth is the backend (.env) — sync it and
-    // refresh the standalone Overdue view labels so both stay consistent.
+    // SLA threshold: single source of truth is the backend (.env) — sync it;
+    // renderStalePRs below refreshes the "(X days)" labels everywhere.
     staleDaysThreshold = data.stale_threshold_days || staleDaysThreshold;
-    document.querySelectorAll('.stale-threshold-num').forEach(el => el.textContent = staleDaysThreshold);
     renderStalePRs(allPRs);
 
     const list = data.leaderboard || [];
