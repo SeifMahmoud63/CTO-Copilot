@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional
 from app.core.config import settings
 from app.core.enums import AppMessage
-from app.schemas.pr_schema import PRListResponse, PRItem, CircuitBreakerStatus
+from app.schemas.pr_schema import PRListResponse, PRItem, CircuitBreakerStatus, DashboardLeaderboardResponse
 from app.services.github_service import github_service
 from app.services.circuit_breaker import circuit_breaker
 from app.services.llm_service import llm_service
@@ -28,6 +28,12 @@ async def list_prs(state: str = Query(default="all", pattern="^(open|closed|all)
         prs=prs,
         message=message
     )
+
+@router.get("/dashboard", response_model=DashboardLeaderboardResponse)
+async def get_dashboard(days: int = Query(default=30, ge=1, le=365)):
+    """Retrieve team impact leaderboard and engineer metrics for a specified timeframe."""
+    return await github_service.get_team_dashboard(days=days)
+
 
 @router.post("/prs/{pr_number}/summarize", response_model=PRItem)
 async def summarize_pr(pr_number: int, force_refresh: bool = False):

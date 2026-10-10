@@ -23,6 +23,7 @@ class PRItem(BaseModel):
     summary: Optional[str] = None
     summary_provider: Optional[LLMProvider] = None
     summary_timestamp: Optional[str] = None
+    impact_score: Optional[float] = None
 
 class PRListResponse(BaseModel):
     repository: str
@@ -30,9 +31,27 @@ class PRListResponse(BaseModel):
     prs: List[PRItem]
     message: str
 
+class EngineerImpactStat(BaseModel):
+    rank: int
+    author: str
+    author_avatar: Optional[str] = None
+    total_prs: int
+    avg_impact_score: float
+    total_impact_points: float
+    highest_impact_score: float
+    tier: str
+
+class DashboardLeaderboardResponse(BaseModel):
+    timeframe_days: int
+    timeframe_label: str
+    total_prs: int
+    total_engineers: int
+    leaderboard: List[EngineerImpactStat]
+
 class CircuitBreakerStatus(BaseModel):
     state: str
     cooldown_seconds: int
     seconds_remaining: float
     last_failure_time: Optional[float] = None
     active_provider: str
+

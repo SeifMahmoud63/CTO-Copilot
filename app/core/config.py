@@ -26,10 +26,16 @@ class Settings(BaseSettings):
     aws_region: str = Field(default="us-west-2")
     aws_default_region: str = Field(default="us-west-2")
 
+    # JEV Decision Model
+    jev_api_key: str = Field(default="")
+    jev_api_url: str = Field(default="https://api.typesafe.ai/v1/systemone")
+    jev_model: str = Field(default="jev-latest")
+
     # Groq Fallback
     groq_api_key: str = Field(default="")
-    groq_model: str = Field(default="gpt20")
-    groq_backup_model: str = Field(default="llama-3.3-70b-versatile")
+    groq_model: str = Field(default="openai/gpt-oss-20b")
+    groq_backup_model: str = Field(default="openai/gpt-oss-120b")
+
 
     # Hyperparameters
     llm_temperature: float = Field(default=0.2)
