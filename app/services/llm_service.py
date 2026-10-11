@@ -51,7 +51,7 @@ class LLMService:
             logger.warning(f"{AppMessage.CIRCUIT_BREAKER_PROBE_FAILED.value}: {e}")
             return False
 
-    def _call_groq_langchain(self, prompt: str) -> str:
+    def _call_groq_langchain(self, prompt: str) -> Tuple[str, str]:
         """Fallback to Groq using LangChain ChatGroq."""
         messages = [
             SystemMessage(content=SystemPrompt.PR_SUMMARIZER.value),
@@ -65,7 +65,7 @@ class LLMService:
                 max_tokens=settings.llm_max_tokens
             )
             ai_msg = chat.invoke(messages)
-            return str(ai_msg.content).strip()
+            return str(ai_msg.content).strip(), settings.groq_model
         except Exception as e:
             logger.warning(f"Groq with model {settings.groq_model} failed ({e}), attempting backup model {settings.groq_backup_model}")
             chat = ChatGroq(
@@ -75,39 +75,31 @@ class LLMService:
                 max_tokens=settings.llm_max_tokens
             )
             ai_msg = chat.invoke(messages)
-            return str(ai_msg.content).strip()
+            return str(ai_msg.content).strip(), settings.groq_backup_model
 
-    def generate_pr_summary(self, prompt: str) -> Tuple[str, LLMProvider]:
-        """
-        Executes summary generation with Circuit Breaker logic:
-        1. Checks if Bedrock can be attempted (state is CLOSED or HALF_OPEN).
-        2. In HALF_OPEN, sends a mock probe first.
-        3. If Bedrock succeeds, updates circuit breaker and returns.
-        4. If Bedrock fails, trips circuit breaker to OPEN (30 min cooldown) and fails over to Groq.
-        """
+    def generate_pr_summary(self, prompt: str) -> Tuple[str, LLMProvider, str]:
+        """Generate PR summary through Bedrock, falling back to Groq if breaker is tripped."""
         can_try = circuit_breaker.can_attempt_bedrock()
 
         if can_try:
-            # If in probe state (HALF_OPEN), test health first
+            # Probe before sending full payload when half-open
             if circuit_breaker.state == CircuitBreakerState.HALF_OPEN:
                 if not self._probe_bedrock():
                     circuit_breaker.record_bedrock_failure(Exception("Probe request failed"))
-                    summary = self._call_groq_langchain(prompt)
-                    return summary, LLMProvider.GROQ_FALLBACK
+                    summary, model_used = self._call_groq_langchain(prompt)
+                    return summary, LLMProvider.GROQ_FALLBACK, model_used
 
             try:
                 summary = self._call_bedrock(prompt)
                 circuit_breaker.record_bedrock_success()
-                return summary, LLMProvider.BEDROCK_QWEN
+                return summary, LLMProvider.BEDROCK_QWEN, settings.bedrock_model
             except Exception as e:
                 circuit_breaker.record_bedrock_failure(e)
-                # Fallback to Groq with LangChain
-                summary = self._call_groq_langchain(prompt)
-                return summary, LLMProvider.GROQ_FALLBACK
+                summary, model_used = self._call_groq_langchain(prompt)
+                return summary, LLMProvider.GROQ_FALLBACK, model_used
         else:
-            # Circuit breaker is OPEN - directly invoke Groq
             logger.info("Circuit breaker active. Using Groq fallback.")
-            summary = self._call_groq_langchain(prompt)
-            return summary, LLMProvider.GROQ_FALLBACK
+            summary, model_used = self._call_groq_langchain(prompt)
+            return summary, LLMProvider.GROQ_FALLBACK, model_used
 
 llm_service = LLMService()

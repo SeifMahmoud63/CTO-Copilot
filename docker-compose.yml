@@ -1,6 +1,39 @@
-version: '3.8'
-
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: cto-copilot-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: cto_root_password_2026
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_DATABASE: cto_copilot_db
+      MYSQL_USER: cto_user
+      MYSQL_PASSWORD: cto_password_2026
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "cto_user", "-pcto_password_2026"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cto-copilot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   cto-copilot:
     build:
       context: .
@@ -13,11 +46,76 @@ services:
     environment:
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=cto_user
+      - MYSQL_PASSWORD=cto_password_2026
+      - MYSQL_DATABASE=cto_copilot_db
     volumes:
+      - ./app:/app/app
       - ./web:/app/web
+      - ./reports:/app/reports
     restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  cto-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cto-copilot-worker
+    command: celery -A app.services.celery_app.celery worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./app:/app/app
+      - ./reports:/app/reports
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cto-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cto-copilot-beat
+    command: celery -A app.services.celery_app.celery beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REPORT_TIMEZONE=Africa/Cairo
+      - REPORT_HOUR=8
+      - REPORT_MINUTE=0
+    volumes:
+      - ./app:/app/app
+      - ./reports:/app/reports
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  redis_data:

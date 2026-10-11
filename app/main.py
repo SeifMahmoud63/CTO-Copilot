@@ -8,8 +8,11 @@ from fastapi.responses import FileResponse
 
 from app.core.config import settings
 from app.core.enums import AppMessage
+from app.core.auth_gate import AuthGateMiddleware
 from app.services.github_service import github_service
+from app.services.db_service import db_service
 from app.api.routes import router as api_router
+from app.api.auth import router as auth_router
 
 
 logging.basicConfig(
@@ -32,16 +35,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
-app.include_router(api_router)
+app.add_middleware(AuthGateMiddleware)
 
-# Mount static web directory
+app.include_router(api_router)
+app.include_router(auth_router)
+
 static_path = os.path.join(os.getcwd(), settings.static_dir)
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
     @app.get("/")
     async def serve_index():
+        return FileResponse(os.path.join(static_path, "index.html"))
+
+    @app.get("/login")
+    async def serve_login():
+        login_path = os.path.join(static_path, "login.html")
+        if os.path.exists(login_path):
+            return FileResponse(login_path)
         return FileResponse(os.path.join(static_path, "index.html"))
 
     @app.get("/{full_path:path}")
@@ -52,7 +63,7 @@ if os.path.exists(static_path):
         return FileResponse(os.path.join(static_path, "index.html"))
 
 async def auto_poll_prs():
-    """Background task continuously polling GitHub for new PRs and auto-summarizing them."""
+    """Periodic GitHub poller for repository updates."""
     while True:
         try:
             await asyncio.sleep(settings.github_poll_interval_seconds)
@@ -63,6 +74,7 @@ async def auto_poll_prs():
 @app.on_event("startup")
 async def startup_event():
     logger.info(AppMessage.STARTUP.value)
+    await db_service.init_db()
     asyncio.create_task(auto_poll_prs())
 
 if __name__ == "__main__":

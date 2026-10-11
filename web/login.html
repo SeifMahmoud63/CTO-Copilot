@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTO Watch | تسجيل الدخول</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=3">
+  <style>
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+      background: radial-gradient(1200px 600px at 80% -10%, #dbeafe 0%, transparent 60%),
+                  radial-gradient(900px 500px at 10% 110%, #e0e7ff 0%, transparent 55%), #f8fafc; }
+    .login-card { width: 100%; max-width: 430px; background: #fff; border: 1px solid #e2e8f0; border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.10); padding: 34px 30px; }
+    .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .login-brand .brand-badge { width: 44px; height: 44px; }
+    .login-card h1 { font-size: 1.35rem; font-weight: 800; color: #0f172a; margin: 10px 0 2px; }
+    .login-card .sub { font-size: 0.86rem; color: #64748b; margin-bottom: 20px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field label { display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; }
+    .login-field input { width: 100%; border: 1px solid #cbd5e1; border-radius: 12px; padding: 11px 14px;
+      font-size: 1rem; font-family: inherit; outline: none; direction: ltr; text-align: center; letter-spacing: 0.15em; }
+    .login-field input[type="password"] { letter-spacing: 0.05em; }
+    .login-field input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+    .login-btn { width: 100%; border: none; border-radius: 12px; padding: 12px; font-size: 0.95rem; font-weight: 800;
+      font-family: inherit; color: #fff; background: linear-gradient(135deg, #1d4ed8, #3b82f6); cursor: pointer;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35); transition: all 0.2s ease; margin-top: 6px; }
+    .login-btn:hover { filter: brightness(1.07); transform: translateY(-1px); }
+    .login-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .login-err { display: none; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 10px;
+      padding: 9px 12px; font-size: 0.83rem; font-weight: 600; margin-bottom: 12px; }
+    .login-remember { display: flex; align-items: center; gap: 8px; font-size: 0.83rem; color: #475569;
+      font-weight: 600; margin: 4px 0 8px; cursor: pointer; }
+    .login-remember input { width: 16px; height: 16px; accent-color: #2563eb; }
+    .login-qr { text-align: center; margin: 6px 0 14px; }
+    .login-qr img { width: 200px; height: 200px; border: 1px solid #e2e8f0; border-radius: 14px; padding: 8px; background: #fff; }
+    .login-steps { font-size: 0.8rem; color: #64748b; background: #f8fafc; border: 1px dashed #cbd5e1;
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.9; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">CTO Watch</span>
+          <span class="brand-sub">Team Radar &amp; Ops</span>
+        </div>
+      </div>
+      <h1>تسجيل الدخول</h1>
+      <p class="sub">Restricted area — sign in to continue / منطقة محمية</p>
+
+      <div id="loginErr" class="login-err"></div>
+
+      <!-- Password step -->
+      <div id="stepPassword">
+        <div class="login-field">
+          <label for="passwordInput">كلمة السر / Password</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button id="passwordNextBtn" class="login-btn">متابعة / Continue</button>
+      </div>
+
+      <!-- TOTP enrollment -->
+      <div id="stepEnroll" class="hidden">
+        <div class="login-steps">1) افتح <b>Google Authenticator</b> على موبايلك<br>2) اعمل Scan للـ QR ده<br>3) اكتب الـ 6 أرقام اللي ظهروا تحت</div>
+        <div class="login-qr"><img id="qrImg" alt="TOTP QR code"></div>
+        <div class="login-field">
+          <label for="enrollCodeInput">كود الـ 6 أرقام / Authenticator code</label>
+          <input id="enrollCodeInput" inputmode="numeric" maxlength="6" placeholder="123456">
+        </div>
+        <button id="enrollBtn" class="login-btn">تأكيد وتسجيل الدخول / Confirm</button>
+      </div>
+
+      <!-- TOTP verification -->
+      <div id="stepCode" class="hidden">
+        <div class="login-field">
+          <label for="codeInput">كود الـ 6 أرقام / Authenticator code</label>
+          <input id="codeInput" inputmode="numeric" maxlength="6" placeholder="123456">
+        </div>
+        <label class="login-remember"><input id="rememberChk" type="checkbox" checked> افتكر الجهاز ده لمدة 7 أيام / Remember this device</label>
+        <button id="loginBtn" class="login-btn">دخول / Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const errBox = $('loginErr');
+    let savedPassword = '';
+    let enrolled = false;
+
+    function showErr(msg) {
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+    }
+    function hideErr() { errBox.style.display = 'none'; }
+    function show(id) { $(id).classList.remove('hidden'); }
+    function hide(id) { $(id).classList.add('hidden'); }
+
+    async function api(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      let data = {};
+      try { data = await res.json(); } catch (e) {}
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    async function init() {
+      try {
+        const res = await fetch('/api/auth/status');
+        const st = await res.json();
+        enrolled = !!st.enrolled;
+        if (!st.configured) {
+          showErr('السيرفر مش متظبط (CTO_PASSWORD / SESSION_SECRET ناقصين). كلم الأدمن.');
+          $('passwordNextBtn').disabled = true;
+        }
+      } catch (e) { showErr('مش قادر أوصل للسيرفر.'); }
+    }
+
+    $('passwordNextBtn').addEventListener('click', async () => {
+      hideErr();
+      savedPassword = $('passwordInput').value;
+      if (!savedPassword) { showErr('اكتب كلمة السر الأول.'); return; }
+      if (!enrolled) {
+        const r = await api('/api/auth/setup', { password: savedPassword });
+        if (!r.ok) { showErr(r.data.detail || 'كلمة السر غلط.'); return; }
+        $('qrImg').src = r.data.qr_data_uri;
+        hide('stepPassword'); show('stepEnroll');
+      } else {
+        hide('stepPassword'); show('stepCode');
+      }
+    });
+
+    $('enrollBtn').addEventListener('click', async () => {
+      hideErr();
+      const code = $('enrollCodeInput').value.trim();
+      const r = await api('/api/auth/verify', { password: savedPassword, code });
+      if (!r.ok) { showErr(r.data.detail || 'الكود غلط، حاول تاني.'); return; }
+      window.location.href = '/';
+    });
+
+    $('loginBtn').addEventListener('click', async () => {
+      hideErr();
+      const code = $('codeInput').value.trim();
+      const remember = $('rememberChk').checked;
+      const r = await api('/api/auth/login', { password: savedPassword, code, remember });
+      if (!r.ok) { showErr(r.data.detail || 'بيانات غلط.'); return; }
+      window.location.href = '/';
+    });
+
+    ['passwordInput', 'codeInput', 'enrollCodeInput'].forEach((id) => {
+      $(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (id === 'passwordInput') $('passwordNextBtn').click();
+          else if (id === 'codeInput') $('loginBtn').click();
+          else $('enrollBtn').click();
+        }
+      });
+    });
+
+    init();
+  </script>
+</body>
+</html>

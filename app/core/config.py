@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     github_repo: str = Field(default="SeifMahmoud63/CTO-Copilot")
     github_api_url: str = Field(default="https://api.github.com")
     github_poll_interval_seconds: int = Field(default=30)
+    pr_stale_threshold_days: int = Field(default=5)
 
     # Bedrock
     bedrock_api_key: str = Field(default="")
@@ -36,7 +38,6 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="openai/gpt-oss-20b")
     groq_backup_model: str = Field(default="openai/gpt-oss-120b")
 
-
     # Hyperparameters
     llm_temperature: float = Field(default=0.2)
     llm_max_tokens: int = Field(default=1024)
@@ -45,9 +46,65 @@ class Settings(BaseSettings):
     circuit_breaker_cooldown_seconds: int = Field(default=1800)
     circuit_breaker_probe_prompt: str = Field(default="ping")
 
+    # MySQL Async Database
+    mysql_host: str = Field(default="mysql")
+    mysql_port: int = Field(default=3306)
+    mysql_user: str = Field(default="cto_user")
+    mysql_password: str = Field(default="cto_password_2026")
+    mysql_database: str = Field(default="cto_copilot_db")
+    database_url: Optional[str] = Field(default=None)
+
+    @property
+    def async_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return (
+            f"mysql+aiomysql://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
+        )
+
+    @property
+    def sync_database_url(self) -> str:
+        """Sync-driver URL for Alembic (async drivers crash it)."""
+        return self.async_database_url.replace(
+            "mysql+aiomysql://", "mysql+pymysql://"
+        ).replace("mysql+asyncmy://", "mysql+pymysql://")
+
     # Application
     app_host: str = Field(default="0.0.0.0")
     app_port: int = Field(default=8000)
     static_dir: str = Field(default="web")
+
+    # Chatbot Memory
+    chat_memory_window_size: int = Field(default=10)
+
+    # Chatbot Query Rewrite (standalone follow-up reformulation)
+    chat_query_rewrite_window_size: int = Field(default=2)
+
+    # Celery Background Tasks
+    celery_broker_url: str = Field(default="redis://redis:6379/0")
+    celery_result_backend: str = Field(default="redis://redis:6379/0")
+
+    # Daily CTO Report (scheduled)
+    report_timezone: str = Field(default="Africa/Cairo")
+    report_hour: int = Field(default=8)
+    report_minute: int = Field(default=0)
+    reports_dir: str = Field(default="reports")
+    report_language: str = Field(default="English")
+
+    # Deepgram Live Voice Agent
+    deepgram_api_key: str = Field(default="")
+    deepgram_agent_model: str = Field(default="nova-3")
+    deepgram_voice_model: str = Field(default="aura-asteria-en")
+    deepgram_agent_url: str = Field(default="wss://agent.deepgram.com/v1/agent/converse")
+
+    # Access Gate (shared password + Google Authenticator TOTP)
+    cto_password: str = Field(default="")
+    session_secret: str = Field(default="")
+    session_max_age_hours: int = Field(default=12)
+    remember_me_days: int = Field(default=7)
+    totp_issuer: str = Field(default="CTO-Copilot")
+    auth_max_attempts: int = Field(default=5)
+    auth_lockout_seconds: int = Field(default=60)
 
 settings = Settings()

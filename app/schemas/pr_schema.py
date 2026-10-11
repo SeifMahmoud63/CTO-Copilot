@@ -24,12 +24,15 @@ class PRItem(BaseModel):
     summary_provider: Optional[LLMProvider] = None
     summary_timestamp: Optional[str] = None
     impact_score: Optional[float] = None
+    is_overdue: bool = False
+    overdue_days: int = 0
 
 class PRListResponse(BaseModel):
     repository: str
     total_prs: int
     prs: List[PRItem]
     message: str
+    stale_threshold_days: int = 5
 
 class EngineerImpactStat(BaseModel):
     rank: int
@@ -46,7 +49,9 @@ class DashboardLeaderboardResponse(BaseModel):
     timeframe_label: str
     total_prs: int
     total_engineers: int
+    stale_threshold_days: int = 5
     leaderboard: List[EngineerImpactStat]
+    overdue_prs: List[PRItem] = Field(default_factory=list)
 
 class CircuitBreakerStatus(BaseModel):
     state: str
