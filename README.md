@@ -233,8 +233,8 @@
               MySQL persisted (sessions + messages)
 ```
 
-> 🖨️ **Actual compiled LangGraph — printed live from code** (`app/services/chat_service.py:494-507`, `StateGraph` with nodes `agent` + `tools`):
-> Regenerate anytime: `python -c "from app.services.chat_service import chat_service; print(chat_service.graph.get_graph().draw_mermaid())"`
+> 🖨️ **Actual compiled LangGraph — printed live from code** (`app/services/chat_service.py:494-507`, `StateGraph` with nodes `agent` + `tools`).
+> Node `classDef` colors are tuned for contrast (dark text on light nodes, white on dark) so the graph stays readable in both GitHub **light** and **dark** mode. Regenerate the structure anytime: `python -c "from app.services.chat_service import chat_service; print(chat_service.graph.get_graph().draw_mermaid())"`
 
 ```mermaid
 ---
@@ -251,9 +251,9 @@ graph TD;
 	agent -. end .-> __end__;
 	agent -.-> tools;
 	tools --> agent;
-	classDef default fill:#f2f0ff,line-height:1.2
-	classDef first fill-opacity:0
-	classDef last fill:#bfb6fc
+	classDef default fill:#e0e7ff,stroke:#4338ca,stroke-width:2px,color:#1e1b4b
+	classDef first fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc
+	classDef last fill:#4f46e5,stroke:#312e81,stroke-width:2px,color:#ffffff
 ```
 
 **How to read it:** `__start__ → agent` (LLM with tools bound, system prompt injected) → conditional router `_should_continue`: no `tool_calls` → `__end__` (reply to user) · has `tool_calls` → `tools` (`_tools_step` executes each call, returns `ToolMessage`s) → back to `agent` for the next reasoning round. The loop repeats until the agent answers without tools — then the reply is persisted to MySQL.
@@ -693,17 +693,6 @@ SQLite-backed — no MySQL/Redis needed for unit tests.
 - 🧠 **Prompt-injection aware** summarizer — PR content treated as untrusted data, never as instructions.
 - ⏳ **Rate-limited auth** + IP lockout; HttpOnly `SameSite=Lax` cookies.
 - 🕊️ **Webhook minimalism** — only `opened/synchronize/reopened` trigger work; everything else ignored.
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Screenshot gallery auto-capture (`docs/screenshots/` CI job with redaction)
-- [ ] PR review-risk score (conflict probability + blast radius)
-- [ ] Slack/Teams push for overdue + daily PDF delivery
-- [ ] Per-engineer weekly digest + trend charts
-- [ ] Vision diffs (Bedrock Nova Pro) for UI-heavy PRs
-- [ ] SSO (GitHub OAuth) alongside the shared gate
 
 ---
 
