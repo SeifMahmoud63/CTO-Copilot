@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 from app.core.config import settings
-from app.core.enums import PRStatus, UserPromptTemplate
+from app.core.enums import PRStatus, UserPromptTemplate, LLMProvider
 from app.schemas.pr_schema import PRItem, EngineerImpactStat, DashboardLeaderboardResponse
 from app.services.llm_service import llm_service
 from app.services.jev_service import jev_service
@@ -48,7 +48,7 @@ class GitHubService:
             self.headers["Authorization"] = f"Bearer {settings.github_token}"
 
         self.repo_url = f"{settings.github_api_url}/repos/{settings.github_repo}"
-        # In-memory summary store: pr_id -> {summary, provider, timestamp, impact_score}
+        # pr_id -> cached summary & impact metadata
         self.summary_cache: Dict[int, Dict] = {}
 
     async def get_pull_requests(self, state: str = "all") -> List[PRItem]:
@@ -67,15 +67,10 @@ class GitHubService:
                 for item in raw_prs:
                     pr_id = item["id"]
                     pr_number = item["number"]
-                    # Test simulation for open PR #4: simulate that it has been open for 9 days (> 8 days SLA)
-                    if pr_number == 4 and item.get("state") == "open" and not item.get("merged_at"):
-                        simulated_days = max(9, settings.pr_stale_threshold_days + 1)
-                        sim_dt = datetime.now(timezone.utc) - timedelta(days=simulated_days, hours=4)
-                        item["created_at"] = sim_dt.isoformat().replace("+00:00", "Z")
                     pr_status = PRStatus.MERGED if item.get("merged_at") else PRStatus(item["state"])
                     cached = self.summary_cache.get(pr_id)
 
-                    # Automatically generate summary if not yet cached
+                    # Summarize on demand if not cached
                     if not cached:
                         try:
                             summarized_item = await self.summarize_pr(pr_number)
@@ -109,7 +104,6 @@ class GitHubService:
                     )
                     pr_items.append(pr_item)
 
-                    # Persist PR to MySQL asynchronously (state + timestamps + overdue + summary + score)
                     try:
                         cached_provider = cached.get("provider")
                         await db_service.save_or_update_pr(
@@ -135,7 +129,7 @@ class GitHubService:
                     except Exception as err:
                         logger.debug(f"Async DB save_or_update_pr bypassed: {err}")
 
-                # Rebuild engineers aggregates (PR count, total + avg score per author)
+                # Recompute engineer totals
                 try:
                     await db_service.rebuild_engineers(pr_items)
                 except Exception as err:
@@ -173,10 +167,6 @@ class GitHubService:
                 logger.error(f"Cannot fetch PR #{pr_number}: {res.text}")
                 return None
             pr_data = res.json()
-            if pr_number == 4 and pr_data.get("state") == "open" and not pr_data.get("merged_at"):
-                simulated_days = max(9, settings.pr_stale_threshold_days + 1)
-                sim_dt = datetime.now(timezone.utc) - timedelta(days=simulated_days, hours=4)
-                pr_data["created_at"] = sim_dt.isoformat().replace("+00:00", "Z")
 
         pr_id = pr_data["id"]
         if not force_refresh and pr_id in self.summary_cache:
@@ -203,7 +193,77 @@ class GitHubService:
                 overdue_days=cached_overdue_days
             )
 
-        # 1. Fetch diff and format prompt
+        # DB-backed hydration: reuse a previously stored summary instead of
+        # paying for a fresh LLM + JEV call (e.g. in-memory cache was lost
+        # on restart but MySQL still has the data). Fresh PR metadata/state
+        # always comes from GitHub above; only summary + score come from DB.
+        if not force_refresh:
+            try:
+                stored = await db_service.get_pr_by_number(pr_number)
+            except Exception as db_err:
+                logger.debug(f"DB hydration bypassed for PR #{pr_number}: {db_err}")
+                stored = None
+            if stored and stored.get("summary_text"):
+                provider_raw = stored.get("summary_provider")
+                try:
+                    provider = LLMProvider(provider_raw) if provider_raw else None
+                except ValueError:
+                    logger.debug(f"Unknown stored provider '{provider_raw}' for PR #{pr_number}")
+                    provider = None
+                self.summary_cache[pr_id] = {
+                    "summary": stored.get("summary_text"),
+                    "provider": provider,
+                    "timestamp": stored.get("summary_timestamp"),
+                    "impact_score": stored.get("impact_score")
+                }
+                pr_state_str = (
+                    PRStatus.MERGED.value if pr_data.get("merged_at")
+                    else pr_data.get("state", "open")
+                )
+                is_overdue, overdue_days = _compute_pr_overdue(pr_data.get("created_at"), pr_state_str)
+                try:
+                    await db_service.save_or_update_pr(
+                        number=pr_data["number"],
+                        title=pr_data["title"],
+                        author=pr_data.get("user", {}).get("login", "unknown"),
+                        author_avatar=pr_data.get("user", {}).get("avatar_url"),
+                        state=pr_state_str,
+                        head_branch=pr_data.get("head", {}).get("ref", "unknown"),
+                        base_branch=pr_data.get("base", {}).get("ref", "main"),
+                        html_url=pr_data["html_url"],
+                        github_pr_id=pr_id,
+                        created_at=_parse_github_dt(pr_data.get("created_at")),
+                        updated_at=_parse_github_dt(pr_data.get("updated_at")),
+                        is_overdue=is_overdue,
+                        overdue_days=overdue_days,
+                        summary_text=stored.get("summary_text"),
+                        summary_provider=provider_raw,
+                        summary_timestamp=_parse_github_dt(stored.get("summary_timestamp")),
+                        impact_score=stored.get("impact_score"),
+                        impact_tier=stored.get("impact_tier")
+                    )
+                except Exception as db_err:
+                    logger.debug(f"Async DB save bypassed: {db_err}")
+                return PRItem(
+                    id=pr_id,
+                    number=pr_data["number"],
+                    title=pr_data["title"] or "Untitled",
+                    author=pr_data.get("user", {}).get("login", "unknown"),
+                    author_avatar=pr_data.get("user", {}).get("avatar_url"),
+                    created_at=pr_data["created_at"],
+                    updated_at=pr_data.get("updated_at"),
+                    state=PRStatus.MERGED if pr_data.get("merged_at") else PRStatus(pr_data["state"]),
+                    html_url=pr_data["html_url"],
+                    head_branch=pr_data.get("head", {}).get("ref", "unknown"),
+                    base_branch=pr_data.get("base", {}).get("ref", "main"),
+                    summary=stored.get("summary_text"),
+                    summary_provider=provider,
+                    summary_timestamp=stored.get("summary_timestamp"),
+                    impact_score=stored.get("impact_score"),
+                    is_overdue=is_overdue,
+                    overdue_days=overdue_days
+                )
+
         diff_content, is_truncated = await self.fetch_pr_diff(pr_number)
         prompt = UserPromptTemplate.PR_DIFF_TEMPLATE.value.format(
             title=pr_data["title"] or "Untitled",
@@ -215,11 +275,9 @@ class GitHubService:
             diff_excerpt=diff_content
         )
 
-        # 2. Generate summary via Bedrock / Groq
         summary_text, provider, model_used = llm_service.generate_pr_summary(prompt)
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # 3. Evaluate impact score (1 to 10) via TypeSafe AI Jev decision model
         impact_score = await jev_service.evaluate_impact(summary_text)
 
         self.summary_cache[pr_id] = {
@@ -229,7 +287,6 @@ class GitHubService:
             "impact_score": impact_score
         }
 
-        # Single inline upsert: PR + summary + impact score (2-table schema)
         pr_state_str = (
             PRStatus.MERGED.value if pr_data.get("merged_at")
             else pr_data.get("state", "open")
@@ -294,11 +351,9 @@ class GitHubService:
         all_prs = await self.get_pull_requests(state="all")
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-        # Group by engineer
         engineer_map: Dict[str, Dict] = {}
 
         for pr in all_prs:
-            # Parse created_at
             try:
                 pr_dt = datetime.fromisoformat(pr.created_at.replace("Z", "+00:00"))
                 if pr_dt < cutoff:
@@ -319,7 +374,6 @@ class GitHubService:
             engineer_map[author]["total_prs"] += 1
             engineer_map[author]["scores"].append(score)
 
-        # Calculate stats and tiers
         stats_list: List[EngineerImpactStat] = []
         for author, data in engineer_map.items():
             scores = data["scores"]
@@ -328,7 +382,6 @@ class GitHubService:
             total_points = round(sum(scores), 1)
             highest_score = max(scores) if scores else 0.0
 
-            # Determine Tier
             if avg_score >= 8.0:
                 tier = "Critical Driver"
             elif avg_score >= 6.5:
@@ -349,10 +402,8 @@ class GitHubService:
                 tier=tier
             ))
 
-        # Sort by total_impact_points descending, then avg_impact_score descending
         stats_list.sort(key=lambda x: (x.total_impact_points, x.avg_impact_score), reverse=True)
 
-        # Assign ranks
         for idx, stat in enumerate(stats_list):
             stat.rank = idx + 1
 

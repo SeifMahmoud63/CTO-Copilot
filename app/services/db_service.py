@@ -1,10 +1,10 @@
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import select, func, desc
 
 from app.db.session import AsyncSessionLocal, init_db as _init_db
-from app.models import PullRequest, Engineer
+from app.models import PullRequest, Engineer, DailyReport
 
 logger = logging.getLogger("cto-copilot.db_service")
 
@@ -25,14 +25,9 @@ def impact_tier_for(score: Optional[float]) -> str:
 
 
 class DatabaseService:
-    """
-    Async Database Service for the 2-table schema:
-    1. pull_requests — every PR with summary, impact score and SLA flags inline.
-    2. engineers — one row per engineer (PR count, total score, avg score).
-    """
+    """Database layer for pull requests, engineers, and daily reports."""
 
     async def init_db(self) -> bool:
-        """Initialize tables asynchronously."""
         return await _init_db()
 
     async def save_or_update_pr(
@@ -119,6 +114,33 @@ class DatabaseService:
             logger.warning(f"Error saving PR #{number} to MySQL: {e}")
             return None
 
+    async def get_pr_by_number(self, number: int) -> Optional[Dict[str, Any]]:
+        """Fetch one stored PR row by GitHub number (summary + score).
+
+        Used to re-hydrate the in-memory summary cache after restarts so
+        already-summarized PRs don't cost fresh LLM calls. Fail-open: any
+        DB error returns None and the caller falls through to the LLM path.
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(PullRequest).where(PullRequest.number == number)
+                res = await session.execute(stmt)
+                pr = res.scalar_one_or_none()
+                if not pr:
+                    return None
+                return {
+                    "number": pr.number,
+                    "github_pr_id": pr.github_pr_id,
+                    "summary_text": pr.summary_text,
+                    "summary_provider": pr.summary_provider,
+                    "summary_timestamp": pr.summary_timestamp.isoformat() if pr.summary_timestamp else None,
+                    "impact_score": pr.impact_score,
+                    "impact_tier": pr.impact_tier,
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching PR #{number} from MySQL: {e}")
+            return None
+
     async def rebuild_engineers(self, pr_items: List[Any]) -> int:
         """Recompute the engineers table from a list of PR items (author, impact_score, avatar)."""
         try:
@@ -186,16 +208,142 @@ class DatabaseService:
             logger.warning(f"Error fetching engineers: {e}")
             return []
 
+    async def save_report(
+        self,
+        report_date: Any,
+        title: str,
+        executive_summary: Optional[str] = None,
+        metrics_json: Optional[str] = None,
+        pdf_path: Optional[str] = None,
+        prs_opened: int = 0,
+        prs_merged: int = 0,
+        prs_closed: int = 0,
+        overdue_count: int = 0,
+    ) -> Optional[DailyReport]:
+        """Upsert a daily report by report_date (idempotent re-runs)."""
+        try:
+            day = report_date
+            if isinstance(day, str):
+                day = date.fromisoformat(day)
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(DailyReport).where(DailyReport.report_date == day)
+                    res = await session.execute(stmt)
+                    rep = res.scalar_one_or_none()
+                    if rep:
+                        rep.title = title
+                        rep.executive_summary = executive_summary
+                        rep.metrics_json = metrics_json
+                        rep.pdf_path = pdf_path
+                        rep.prs_opened = prs_opened
+                        rep.prs_merged = prs_merged
+                        rep.prs_closed = prs_closed
+                        rep.overdue_count = overdue_count
+                    else:
+                        rep = DailyReport(
+                            report_date=day,
+                            title=title,
+                            executive_summary=executive_summary,
+                            metrics_json=metrics_json,
+                            pdf_path=pdf_path,
+                            prs_opened=prs_opened,
+                            prs_merged=prs_merged,
+                            prs_closed=prs_closed,
+                            overdue_count=overdue_count,
+                        )
+                        session.add(rep)
+                    await session.flush()
+                    return rep
+        except Exception as e:
+            logger.warning(f"Error saving daily report {report_date}: {e}")
+            return None
+
+    async def get_reports(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """List daily reports newest-first (title + date for the UI)."""
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(DailyReport).order_by(desc(DailyReport.report_date)).limit(limit)
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [
+                    {
+                        "id": r.id,
+                        "report_date": r.report_date.isoformat() if r.report_date else None,
+                        "title": r.title,
+                        "prs_opened": r.prs_opened,
+                        "prs_merged": r.prs_merged,
+                        "prs_closed": r.prs_closed,
+                        "overdue_count": r.overdue_count,
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logger.warning(f"Error fetching daily reports: {e}")
+            return []
+
+    async def get_report_by_date(self, report_date: Any) -> Optional[Dict[str, Any]]:
+        """Fetch one daily report by date (YYYY-MM-DD string or date object)."""
+        try:
+            day = report_date
+            if isinstance(day, str):
+                day = date.fromisoformat(day)
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(select(DailyReport).where(DailyReport.report_date == day))
+                r = res.scalar_one_or_none()
+                if not r:
+                    return None
+                return {
+                    "id": r.id,
+                    "report_date": r.report_date.isoformat() if r.report_date else None,
+                    "title": r.title,
+                    "executive_summary": r.executive_summary,
+                    "pdf_path": r.pdf_path,
+                    "prs_opened": r.prs_opened,
+                    "prs_merged": r.prs_merged,
+                    "prs_closed": r.prs_closed,
+                    "overdue_count": r.overdue_count,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching daily report {report_date}: {e}")
+            return None
+
+    async def get_report(self, report_id: int) -> Optional[Dict[str, Any]]:
+        """Full record including pdf_path + summary (for preview/download)."""
+        try:
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(select(DailyReport).where(DailyReport.id == report_id))
+                r = res.scalar_one_or_none()
+                if not r:
+                    return None
+                return {
+                    "id": r.id,
+                    "report_date": r.report_date.isoformat() if r.report_date else None,
+                    "title": r.title,
+                    "executive_summary": r.executive_summary,
+                    "pdf_path": r.pdf_path,
+                    "prs_opened": r.prs_opened,
+                    "prs_merged": r.prs_merged,
+                    "prs_closed": r.prs_closed,
+                    "overdue_count": r.overdue_count,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching daily report {report_id}: {e}")
+            return None
+
     async def get_db_stats(self) -> Dict[str, int]:
-        """Record counts for the 2-table schema."""
+        """Record counts for the schema (PRs, Engineers, Daily Reports)."""
         try:
             async with AsyncSessionLocal() as session:
                 prs_cnt = (await session.execute(select(func.count(PullRequest.id)))).scalar() or 0
                 engs_cnt = (await session.execute(select(func.count(Engineer.id)))).scalar() or 0
-                return {"total_prs": prs_cnt, "total_engineers": engs_cnt}
+                reps_cnt = (await session.execute(select(func.count(DailyReport.id)))).scalar() or 0
+                return {"total_prs": prs_cnt, "total_engineers": engs_cnt, "total_reports": reps_cnt}
         except Exception as e:
             logger.warning(f"Error fetching DB stats: {e}")
-            return {"total_prs": 0, "total_engineers": 0}
+            return {"total_prs": 0, "total_engineers": 0, "total_reports": 0}
 
 
 db_service = DatabaseService()

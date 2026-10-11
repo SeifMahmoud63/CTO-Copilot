@@ -75,4 +75,36 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000)
     static_dir: str = Field(default="web")
 
+    # Chatbot Memory
+    chat_memory_window_size: int = Field(default=10)
+
+    # Chatbot Query Rewrite (standalone follow-up reformulation)
+    chat_query_rewrite_window_size: int = Field(default=2)
+
+    # Celery Background Tasks
+    celery_broker_url: str = Field(default="redis://redis:6379/0")
+    celery_result_backend: str = Field(default="redis://redis:6379/0")
+
+    # Daily CTO Report (scheduled)
+    report_timezone: str = Field(default="Africa/Cairo")
+    report_hour: int = Field(default=8)
+    report_minute: int = Field(default=0)
+    reports_dir: str = Field(default="reports")
+    report_language: str = Field(default="English")
+
+    # Deepgram Live Voice Agent
+    deepgram_api_key: str = Field(default="")
+    deepgram_agent_model: str = Field(default="nova-3")
+    deepgram_voice_model: str = Field(default="aura-asteria-en")
+    deepgram_agent_url: str = Field(default="wss://agent.deepgram.com/v1/agent/converse")
+
+    # Access Gate (shared password + Google Authenticator TOTP)
+    cto_password: str = Field(default="")
+    session_secret: str = Field(default="")
+    session_max_age_hours: int = Field(default=12)
+    remember_me_days: int = Field(default=7)
+    totp_issuer: str = Field(default="CTO-Copilot")
+    auth_max_attempts: int = Field(default=5)
+    auth_lockout_seconds: int = Field(default=60)
+
 settings = Settings()

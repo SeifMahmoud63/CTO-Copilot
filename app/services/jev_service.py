@@ -12,9 +12,7 @@ class JevService:
         self.model = settings.jev_model
 
     async def evaluate_impact(self, summary_text: str) -> float:
-        """
-        Uses TypeSafe AI Jev System One decision model to rate PR impact on a 1.0 to 10.0 scale.
-        """
+        """Score PR impact from 1.0 to 10.0 using JEV decision criteria."""
         if not self.api_key or not summary_text:
             return 5.0
 
@@ -56,7 +54,7 @@ class JevService:
                     ans = data.get("answers", {}).get("impact_score", {})
                     raw_score = ans.get("score")
                     if raw_score is not None:
-                        # Jev criteria indices are 0 to 9, so score + 1 gives 1.0 to 10.0 scale
+                        # JEV returns 0-9 index; map to 1.0-10.0 scale
                         final_score = round(float(raw_score) + 1.0, 1)
                         return min(10.0, max(1.0, final_score))
                 logger.warning(f"JEV API returned status {response.status_code}: {response.text}")

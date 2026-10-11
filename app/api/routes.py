@@ -73,7 +73,7 @@ async def list_engineers():
     """List engineers with PR count, total score and average score from MySQL."""
     return {"engineers": await db_service.get_engineers()}
 
-# ----------------- Chatbot & LangGraph Endpoints ----------------- #
+# Chat endpoints
 
 from pydantic import BaseModel
 from typing import Optional
@@ -113,6 +113,88 @@ async def send_chat_message(session_id: str, payload: SendMessageRequest):
     if not payload.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
     return await chat_service.send_message(session_id, payload.message.strip())
+
+
+# Reports endpoints
+
+@router.get("/reports")
+async def list_reports(limit: int = Query(default=30, ge=1, le=200)):
+    """List daily CTO reports (title + date), newest first."""
+    return {"reports": await db_service.get_reports(limit=limit)}
+
+
+@router.post("/reports/generate")
+async def trigger_report_generation(report_date: Optional[str] = None):
+    """Enqueue a daily report generation task (manual trigger, same pipeline as Beat)."""
+    try:
+        from app.services.celery_app import generate_daily_task
+
+        task = generate_daily_task.delay(report_date)
+        return {"status": "queued", "task_id": task.id}
+    except Exception as e:
+        # Fall back to inline generation if Redis broker is down
+        from app.services.report_service import generate_daily_report
+
+        record = await generate_daily_report(report_date)
+        return {"status": "completed_inline", "report": record, "detail": str(e)}
+
+
+@router.get("/reports/tasks/{task_id}")
+async def report_task_status(task_id: str):
+    """Poll a queued generation task (PENDING / SUCCESS / FAILURE)."""
+    from celery.result import AsyncResult
+
+    from app.services.celery_app import celery
+
+    res = AsyncResult(task_id, app=celery)
+    payload: dict = {"task_id": task_id, "status": res.status}
+    if res.ready():
+        payload["result"] = res.result if res.successful() else str(res.result)
+    return payload
+
+
+@router.get("/reports/{report_id}/file")
+async def report_file(
+    report_id: int,
+    mode: str = Query(default="preview", pattern="^(preview|download)$"),
+):
+    """Preview (inline) or download (attachment) a report PDF."""
+    import os
+
+    from fastapi.responses import FileResponse
+
+    rec = await db_service.get_report(report_id)
+    if not rec or not rec.get("pdf_path") or not os.path.exists(rec["pdf_path"]):
+        raise HTTPException(status_code=404, detail=f"Report #{report_id} PDF not found.")
+    return FileResponse(
+        rec["pdf_path"],
+        media_type="application/pdf",
+        filename=os.path.basename(rec["pdf_path"]),
+        content_disposition_type="attachment" if mode == "download" else "inline",
+    )
+
+
+# ----------------- Deepgram Voice Agent Endpoints ----------------- #
+
+from fastapi import WebSocket
+from app.services.voice_service import voice_service
+
+
+@router.get("/voice/config")
+async def get_voice_config():
+    """Retrieve voice agent configuration and readiness status."""
+    return {
+        "configured": bool(settings.deepgram_api_key),
+        "model": settings.deepgram_agent_model,
+        "voice": settings.deepgram_voice_model,
+    }
+
+
+@router.websocket("/voice/ws")
+async def voice_agent_websocket(websocket: WebSocket):
+    """Bidirectional WebSocket streaming audio and tool events with Deepgram Voice Agent."""
+    await voice_service.handle_client_session(websocket)
+
 
 
 

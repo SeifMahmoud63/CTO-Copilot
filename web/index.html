@@ -1,21 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CTO Watch | Engineering Leadership Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
+
 <body>
   <div class="app-layout">
     <header class="topbar">
-      <div class="brand">
+      <div class="brand" id="brandBtn" role="button" tabindex="0" title="Go to Home" style="cursor: pointer;">
         <div class="brand-badge">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
           </svg>
         </div>
         <div class="brand-text">
@@ -24,127 +28,82 @@
         </div>
       </div>
 
-      <nav class="top-nav">
-        <button id="navHomeBtn" class="nav-btn active">Home</button>
-        <button id="navPrsBtn" class="nav-btn">
-          <span>PR Requests</span>
-          <span id="navPrCount" class="nav-counter">0</span>
+      <!-- Center: Home shortcut -->
+      <div class="active-view-container">
+        <button id="homeNavBtn" class="home-nav-btn" title="Go to Home">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          <span>Home</span>
         </button>
-        <button id="navDashBtn" class="nav-btn">
-          <span>Dashboard</span>
-        </button>
-        <button id="navStaleBtn" class="nav-btn">
-          <span>Overdue</span>
-          <span id="navStaleCount" class="nav-counter">0</span>
-        </button>
-        <button id="navChatBtn" class="nav-btn">
-          <span>Chatbot</span>
-        </button>
-      </nav>
-
+      </div>
 
       <div class="top-actions">
         <div class="status-indicator">
           <span class="status-dot"></span>
           <span>Team Online</span>
         </div>
-        <button id="toggleDrawerBtn" class="drawer-trigger-btn" aria-label="Open Right Panel">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="15" y1="3" x2="15" y2="21"/>
+        <button id="toggleDrawerBtn" class="drawer-trigger-btn" aria-label="Open Workspace Menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="15" y1="3" x2="15" y2="21" />
           </svg>
-          <span>Tools Panel</span>
+          <span>Workspace Menu</span>
         </button>
       </div>
     </header>
 
     <main class="main-content">
-      <!-- HOME VIEW -->
+      <!-- Home -->
       <section id="homeView" class="view-section active">
         <div class="hero-header">
           <span class="badge-pill">CTO Executive Overview</span>
           <h1>Team Velocity & Engineering Pulse</h1>
           <p class="hero-description">
-            Real-time observatory for engineering management, team deliverables, and release health.
+            Live SLA health and 7-day PR activity — computed in real time from open pull requests.
           </p>
         </div>
 
         <div class="metrics-grid">
-          <div class="metric-card">
+          <div class="metric-card sla-card">
             <div class="metric-top">
-              <span class="metric-label">Active Engineers</span>
-              <span class="metric-chip positive">All Active</span>
+              <span class="metric-label">SLA Health</span>
+              <span id="slaChip" class="metric-chip neutral">Loading…</span>
             </div>
-            <div class="metric-value">14</div>
-            <div class="metric-foot">Synced across 3 squads</div>
-          </div>
-
-          <div class="metric-card">
-            <div class="metric-top">
-              <span class="metric-label">Sprint Health</span>
-              <span class="metric-chip positive">On Track</span>
+            <div id="slaValue" class="metric-value">—</div>
+            <div class="sla-bar" role="progressbar" aria-label="Share of open PRs within SLA">
+              <div id="slaBarFill" class="sla-bar-fill" style="width: 0%"></div>
             </div>
-            <div class="metric-value">92%</div>
-            <div class="metric-foot">Sprint 24 completion target</div>
-          </div>
-
-          <div class="metric-card">
-            <div class="metric-top">
-              <span class="metric-label">Deploy Frequency</span>
-              <span class="metric-chip neutral">Daily</span>
-            </div>
-            <div class="metric-value">6 / day</div>
-            <div class="metric-foot">Automated CI/CD pipelines</div>
+            <div id="slaFoot" class="metric-foot">Loading live PR data…</div>
           </div>
         </div>
 
-        <div class="pulse-feed-card">
-          <div class="pulse-feed-header">
+        <div class="chart-card">
+          <div class="chart-header">
             <div>
-              <h3>Recent Team Updates</h3>
-              <p>Highlights across frontend, backend, and infrastructure branches</p>
+              <h3>Weekly PR Activity</h3>
+              <p>Opened vs merged per day — last 7 days</p>
             </div>
-            <span class="pulse-live-tag">Live Stream</span>
-          </div>
-
-          <div class="feed-items">
-            <div class="feed-item">
-              <div class="avatar">AK</div>
-              <div class="feed-body">
-                <div class="feed-meta">
-                  <strong>Backend Team</strong> merged database indexing optimizations
-                  <span class="feed-time">12m ago</span>
-                </div>
-                <div class="feed-snippet">Postgres query latency reduced by 34% across search endpoints.</div>
-              </div>
-            </div>
-
-            <div class="feed-item">
-              <div class="avatar squad-fe">SM</div>
-              <div class="feed-body">
-                <div class="feed-meta">
-                  <strong>Frontend Team</strong> updated design token definitions
-                  <span class="feed-time">35m ago</span>
-                </div>
-                <div class="feed-snippet">Standardized responsive spacing tokens and theme color variables.</div>
-              </div>
-            </div>
-
-            <div class="feed-item">
-              <div class="avatar squad-infra">DO</div>
-              <div class="feed-body">
-                <div class="feed-meta">
-                  <strong>Infra Squad</strong> completed staging cluster migration
-                  <span class="feed-time">1h ago</span>
-                </div>
-                <div class="feed-snippet">Zero downtime during staging blue/green rollover.</div>
-              </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot opened"></span>Opened</span>
+              <span class="legend-item"><span class="legend-dot merged"></span>Merged</span>
             </div>
           </div>
+          <div id="homeChartWrap" class="chart-wrap">
+            <svg id="homeChart" viewBox="0 0 680 280" preserveAspectRatio="xMidYMid meet" role="img"
+              aria-label="Line chart of opened and merged pull requests per day over the last 7 days"></svg>
+            <div id="homeChartEmpty" class="chart-empty" style="display: none;">
+              No PR activity in the last 7 days.
+            </div>
+          </div>
+          <div id="homeChartFoot" class="metric-foot">Loading…</div>
         </div>
       </section>
 
-      <!-- DEDICATED PR REQUESTS TABLE VIEW -->
+      <!-- Pull Requests -->
       <section id="prsView" class="view-section">
         <div class="table-view-header">
           <div>
@@ -153,8 +112,9 @@
             <p class="table-view-sub">Track team submissions, code changes, and executive AI summaries in real-time.</p>
           </div>
           <button id="refreshTableBtn" class="btn-refresh-table" title="Sync from GitHub">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
             </svg>
             <span>Refresh PRs</span>
           </button>
@@ -183,18 +143,18 @@
                 </tr>
               </thead>
               <tbody id="prsTableBody">
-                <!-- Dynamically populated -->
               </tbody>
             </table>
           </div>
 
           <div id="tableEmptyState" class="table-empty-state">
             <div class="empty-icon-wrap">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="18" cy="18" r="3"/>
-                <circle cx="6" cy="6" r="3"/>
-                <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-                <line x1="6" y1="9" x2="6" y2="21"/>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="18" r="3" />
+                <circle cx="6" cy="6" r="3" />
+                <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+                <line x1="6" y1="9" x2="6" y2="21" />
               </svg>
             </div>
             <h4>No PRs Detected Yet</h4>
@@ -203,7 +163,7 @@
         </div>
       </section>
 
-      <!-- STANDALONE OVERDUE / STALE PRs VIEW -->
+      <!-- Overdue -->
       <section id="staleView" class="view-section">
         <div class="table-view-header">
           <div>
@@ -212,12 +172,14 @@
             </div>
             <h2>Overdue Pull Requests</h2>
             <p class="table-view-sub">
-              Open pull requests remaining active beyond the SLA threshold (<span class="stale-threshold-num">5</span> days).
+              Open pull requests remaining active beyond the SLA threshold (<span class="stale-threshold-num">5</span>
+              days).
             </p>
           </div>
           <button id="refreshStaleBtn" class="btn-refresh-table" title="Sync from GitHub">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
             </svg>
             <span>Refresh</span>
           </button>
@@ -237,16 +199,16 @@
                 </tr>
               </thead>
               <tbody id="staleTableBody">
-                <!-- Dynamically populated -->
               </tbody>
             </table>
           </div>
 
           <div id="staleEmptyState" class="table-empty-state" style="display: flex;">
             <div class="empty-icon-wrap" style="background: #f0fdf4; border-color: #bbf7d0;">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
               </svg>
             </div>
             <h4 style="color: #166534;">No Overdue PRs</h4>
@@ -255,7 +217,7 @@
         </div>
       </section>
 
-      <!-- TEAM IMPACT & LEADERBOARD DASHBOARD VIEW -->
+      <!-- Dashboard -->
       <section id="dashboardView" class="view-section">
         <div class="table-view-header">
           <div>
@@ -332,10 +294,11 @@
 
           <div id="dashEmptyState" class="table-empty-state">
             <div class="empty-icon-wrap">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10"/>
-                <line x1="12" y1="20" x2="12" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="14"/>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
               </svg>
             </div>
             <h4>No Activity in This Timeframe</h4>
@@ -344,17 +307,13 @@
         </div>
       </section>
 
-      <!-- CHATBOT VIEW (LANGGRAPH AGENT WITH MYSQL READ-ONLY) -->
+      <!-- Chat -->
       <section id="chatView" class="view-section">
         <div class="table-view-header">
           <div>
-            <div class="badge-pill">Autonomous LangGraph Agent</div>
-            <h2>CTO AI Copilot & Live DB Assistant</h2>
-            <p class="table-view-sub">Ask questions about pull requests, team velocity, and metrics with real-time MySQL read-only intelligence.</p>
-          </div>
-          <div class="chat-agent-status-badges">
-            <span class="chat-badge-pill green">🟢 Bedrock Qwen</span>
-            <span class="chat-badge-pill blue">🔒 MySQL Read-Only</span>
+            <div class="badge-pill">Engineering Intelligence</div>
+            <h2>CTO AI Copilot</h2>
+            <p class="table-view-sub">Ask questions about pull requests, team velocity, and metrics.</p>
           </div>
         </div>
 
@@ -364,7 +323,10 @@
             <div class="chat-sessions-header">
               <span class="chat-sessions-title">Conversations</span>
               <button id="btnNewChat" class="btn-new-chat" title="Create new session">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
                 <span>New Chat</span>
               </button>
             </div>
@@ -380,17 +342,9 @@
                 <div class="chat-bot-avatar">🤖</div>
                 <div>
                   <h4 id="activeChatTitle">New Conversation</h4>
-                  <span class="chat-header-meta">Powered by Bedrock Qwen & LangGraph StateGraph • Connected to MySQL</span>
+                  <span class="chat-header-meta">Engineering Leadership & Repository Assistant</span>
                 </div>
               </div>
-            </div>
-
-            <!-- Quick Questions Bar -->
-            <div class="chat-quick-suggestions">
-              <span class="quick-chip" data-prompt="Which PRs are currently open and overdue in the database?">⚠️ Overdue PRs</span>
-              <span class="quick-chip" data-prompt="Who is the top contributor on the leaderboard?">🏆 Top Contributor</span>
-              <span class="quick-chip" data-prompt="Show all pull requests with their author and impact score in a table.">📊 All PRs Table</span>
-              <span class="quick-chip" data-prompt="Summarize PR #4 and explain its architectural impact.">🔍 PR #4 Analysis</span>
             </div>
 
             <!-- Messages Stream -->
@@ -410,14 +364,137 @@
 
             <!-- Input Bar -->
             <form id="chatInputForm" class="chat-input-form">
-              <textarea id="chatInput" class="chat-input" placeholder="Ask anything about pull requests, contributors, impact scores..." rows="1"></textarea>
+              <textarea id="chatInput" class="chat-input" dir="auto"
+                placeholder="Ask anything about pull requests, contributors, impact scores..." rows="1"></textarea>
               <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <line x1="22" y1="2" x2="11" y2="13"/>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
               </button>
             </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Reports -->
+      <section id="reportsView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">📄 Scheduled Daily Reports</div>
+            <h2>Daily CTO Reports</h2>
+            <p class="table-view-sub">Auto-generated every day at 08:00 (Africa/Cairo) — 24h metrics + AI executive
+              analysis.</p>
+          </div>
+          <button id="refreshReportsBtn" class="btn-refresh-table" title="Reload reports">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-responsive">
+            <table class="prs-table">
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Report</th>
+                  <th style="width: 18%;">Date &amp; Time</th>
+                  <th style="width: 10%;">Opened</th>
+                  <th style="width: 10%;">Merged</th>
+                  <th style="width: 10%;">Overdue</th>
+                  <th style="width: 22%;">PDF</th>
+                </tr>
+              </thead>
+              <tbody id="reportsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+          <div id="reportsEmptyState" class="table-empty-state" style="display: flex; padding: 28px 16px;">
+            <div class="empty-icon-wrap">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+            </div>
+            <h4>No Daily Reports Yet</h4>
+            <p>Reports generate automatically every morning at 08:00 (Africa/Cairo).</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Voice -->
+      <section id="voiceView" class="view-section">
+        <div class="table-view-header">
+          <div>
+            <div class="badge-pill">🎙️ Deepgram Live Voice Agent</div>
+            <h2>CTO Voice Copilot</h2>
+            <p class="table-view-sub">
+              Hands-free engineering management intelligence. Converse naturally or query real-time PR metrics, team velocity, and overdue alerts.
+            </p>
+          </div>
+        </div>
+
+        <div class="voice-call-card">
+          <!-- Voice Visualizer Stage -->
+          <div class="voice-visualizer-stage">
+            <div class="orb-ripple orb-ripple-1"></div>
+            <div class="orb-ripple orb-ripple-2"></div>
+            <div id="voiceOrb" class="voice-orb idle">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Live Status Indicator -->
+          <div id="voiceStatusPill" class="voice-status-pill idle">
+            <span class="status-dot"></span>
+            <span id="voiceStatusText">Ready to Connect</span>
+          </div>
+
+          <!-- Realtime MySQL Query Activity Badge -->
+          <div id="voiceDbQueryBadge" class="voice-db-query-badge" style="display: none;">
+            <span>🔍 Querying MySQL:</span>
+            <code id="voiceDbQueryText">SELECT ...</code>
+          </div>
+
+          <!-- Controls -->
+          <div class="voice-controls-bar">
+            <button id="btnVoiceToggle" class="btn-voice-call">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              <span id="voiceBtnLabel">Start Voice Call</span>
+            </button>
+            <button id="btnVoiceMute" class="btn-voice-mute" disabled title="Mute microphone">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Transcript Log -->
+          <div class="voice-transcript-wrapper">
+            <div class="voice-transcript-header">
+              <span>Live Conversation Transcript</span>
+              <span id="voiceInterruptionNotice" style="display: none; color: #dc2626;">Barge-in Active</span>
+            </div>
+            <div id="voiceTranscriptBox" class="voice-transcript-box">
+              <div class="voice-msg-row" style="color: var(--text-muted); font-style: italic;">
+                Click "Start Voice Call" to begin speaking with CTO Copilot...
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -426,7 +503,8 @@
 
     <!-- Slide-out Right Edge Pull Tab -->
     <div id="sidePullHandle" class="side-pull-handle" title="Pull open side panel">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round">
         <polyline points="15 18 9 12 15 6"></polyline>
       </svg>
       <span>Panel</span>
@@ -437,39 +515,55 @@
     <aside id="sideDrawer" class="side-drawer" aria-label="Right panel">
       <div class="drawer-header">
         <div class="drawer-title-group">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <line x1="9" y1="3" x2="9" y2="21"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
           <h3>Workspace Menu</h3>
         </div>
         <button id="closeDrawerBtn" class="icon-btn" aria-label="Close panel">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
       </div>
 
       <div class="drawer-nav">
-        <button class="drawer-tab" id="drawerPrBtn" data-tab="pr-requests">
+        <button class="drawer-tab active" id="drawerHomeBtn" data-tab="home">
           <div class="tab-label-group">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="18" cy="18" r="3"/>
-              <circle cx="6" cy="6" r="3"/>
-              <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-              <line x1="6" y1="9" x2="6" y2="21"/>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+            <span>Home</span>
+          </div>
+        </button>
+
+        <button class="drawer-tab" id="drawerPrBtn" data-tab="pr-requests" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="18" r="3" />
+              <circle cx="6" cy="6" r="3" />
+              <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+              <line x1="6" y1="9" x2="6" y2="21" />
             </svg>
             <span>PR Requests</span>
           </div>
+          <span id="drawerPrCount" class="count-pill">0</span>
         </button>
 
         <button class="drawer-tab" id="drawerDashBtn" data-tab="dashboard" style="margin-top: 10px;">
           <div class="tab-label-group">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
             </svg>
             <span>Dashboard</span>
           </div>
@@ -477,30 +571,57 @@
 
         <button class="drawer-tab" id="drawerStaleBtn" data-tab="overdue" style="margin-top: 10px;">
           <div class="tab-label-group">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
             <span>Overdue</span>
           </div>
+          <span id="drawerStaleCount" class="count-pill">0</span>
         </button>
 
         <button class="drawer-tab" id="drawerChatBtn" data-tab="chat" style="margin-top: 10px;">
           <div class="tab-label-group">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2-2z" />
             </svg>
-            <span>Chatbot (AI Agent)</span>
+            <span>Chatbot</span>
+          </div>
+        </button>
+
+        <button class="drawer-tab" id="drawerVoiceBtn" data-tab="voice" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+            <span>Voice Agent</span>
+          </div>
+          <span class="live-mic-chip">LIVE</span>
+        </button>
+
+        <button class="drawer-tab" id="drawerReportsBtn" data-tab="reports" style="margin-top: 10px;">
+          <div class="tab-label-group">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span>Daily Reports</span>
           </div>
         </button>
       </div>
-
-
-
-
     </aside>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
+
 </html>

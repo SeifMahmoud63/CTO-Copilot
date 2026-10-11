@@ -8,7 +8,7 @@ from app.models import Base
 
 logger = logging.getLogger("cto-copilot.db")
 
-# Create async engine with pool recycling and health ping
+# Async engine with connection recycling
 engine = create_async_engine(
     settings.async_database_url,
     echo=False,
@@ -16,7 +16,7 @@ engine = create_async_engine(
     pool_recycle=3600
 )
 
-# Async session factory
+# Session factory
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -26,7 +26,7 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency for FastAPI routes to yield an async database session."""
+    """Yield an async database session per request."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

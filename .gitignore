@@ -47,6 +47,10 @@ htmlcov/
 *.log
 logs/
 
+# Local generated reports (daily PDFs live here, never commit them)
+reports/
+*.pdf
+
 # Local database dumps (never commit data)
 *.sql
 *.dump
