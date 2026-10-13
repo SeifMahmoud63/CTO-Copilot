@@ -22,21 +22,22 @@
 
 ---
 
-## 🧭 Product Tour
+## 🧭 Product Tour (Screenshots)
 
-| Screen | Overview |
-|---|---|
-| 🏠 **Home — Team Velocity & Pulse** | Live SLA Health card (% within SLA + bar) + 7-day Opened-vs-Merged SVG chart |
-| 🔀 **PR Requests Directory** | Auto-populated PR table: author · date · executive AI summary · state · impact score · details link + `All/Open/Merged/Closed` filters |
-| ⚠️ **Overdue / SLA Alerts** | Every open PR older than `PR_STALE_THRESHOLD_DAYS` (default **5**) with overdue-duration counter |
-| 🏆 **Engineer Impact Dashboard** | Leaderboard ranked by **impact, not commit count** — 8 time windows (Today → 1 Year), avg/total impact, tier badges |
-| 💬 **CTO AI Copilot (Chat)** | LangGraph agent with live read-only MySQL access, sessions sidebar, bilingual AR/EN, query-rewrite for follow-ups |
-| 📄 **Daily CTO Reports** | One PDF every morning at **08:00 Africa/Cairo** — Preview inline / Download attachment |
-| 🎙️ **Voice Copilot** | Push-to-talk Deepgram agent: glowing orb · live transcript · real-time `🔍 Querying MySQL:` badge |
-| 🔐 **Access Gate** | Shared password → QR enroll in Google Authenticator → 6-digit TOTP → optional *Remember this device* |
-| 📧 **Email Triage** | Unread inbox, auto-summarized — From · Subject · Summary · urgency score + tier chip |
-| 📢 **Slack Bot Integration** | SLA breach Block Kit alerts + automated morning PDF report uploads directly to Slack |
-| 🧪 **Eval Lab** | One-click hallucination torture suite — judge ON/OFF runs compared side by side in MLflow |
+| Screen | Preview | What you're looking at |
+|---|---|---|
+| 🏠 **Home — Team Velocity & Pulse** | <img src="docs/screenshots/01-home.png" alt="Home view — SLA health card and weekly activity chart" width="420"> | Live SLA Health card (% within SLA + bar) + 7-day Opened-vs-Merged SVG chart |
+| 🔀 **PR Requests Directory** | <img src="docs/screenshots/02-pr-requests.png" alt="PR Requests table with AI summaries and scores" width="420"> | Auto-populated PR table: author · date · executive AI summary · state · impact score · details link + `All/Open/Merged/Closed` filters |
+| ⚠️ **Overdue / SLA Alerts** | <img src="docs/screenshots/03-overdue.png" alt="Overdue PRs table with SLA countdown" width="420"> | Every open PR older than `PR_STALE_THRESHOLD_DAYS` (default **8**) with overdue-duration counter |
+| 🏆 **Engineer Impact Dashboard** | <img src="docs/screenshots/04-dashboard.png" alt="Leaderboard ranked by impact" width="420"> | Leaderboard ranked by **impact, not commit count** — 8 time windows (Today → 1 Year), avg/total impact, tier badges |
+| 💬 **CTO AI Copilot (Chat)** | <img src="docs/screenshots/05-chatbot.png" alt="Chat sessions sidebar and messages" width="420"> | LangGraph agent with live read-only MySQL access, sessions sidebar, bilingual AR/EN, query-rewrite for follow-ups |
+| 📄 **Daily CTO Reports** | <img src="docs/screenshots/06-reports.png" alt="Daily reports table with preview and download" width="420"> | One PDF every morning at **08:00 Africa/Cairo** — Preview inline / Download attachment |
+| 🎙️ **Voice Copilot** | <img src="docs/screenshots/07-voice.png" alt="Voice orb visualizer with transcript" width="420"> | Push-to-talk Deepgram agent: glowing orb · live transcript · real-time `🔍 Querying MySQL:` badge |
+| 🔐 **Access Gate** | <img src="docs/screenshots/08-login.png" alt="Password plus TOTP login" width="420"> | Shared password → QR enroll in Google Authenticator → 6-digit TOTP → optional *Remember this device* |
+| 📧 **Email Triage** | <img src="docs/screenshots/09-email.png" alt="Email triage table" width="420"> | Unread mail auto-summarized & urgency-scored (1–10) |
+| 🧭 **Workspace Menu** | <img src="docs/screenshots/10-menu.png" alt="Workspace menu drawer" width="420"> | Slide-out drawer with live badge counts |
+| 🧪 **Eval Lab** | <img src="docs/screenshots/11-eval.png" alt="Eval Lab benchmarks" width="420"> | Hallucination torture suite scored in MLflow (98% faithful / 0% hallucination) |
+| 📢 **Slack Bot Integration** | <img src="docs/screenshots/12-slack.png" alt="Slack alert delivery" width="420"> | Morning PDF report upload + SLA breach cards |
 
 ---
 
