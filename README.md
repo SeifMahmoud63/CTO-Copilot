@@ -537,6 +537,25 @@ flowchart LR
     D --> E["📊 MLflow<br/>params + metrics<br/>+ results.json"]
 ```
 
+#### 📊 Empirical Benchmark Results (122 Torture Questions)
+
+The table below documents the empirical evaluation results tracked in MLflow (`f3ddde2c` and `25360aa6`), comparing identical torture suites with the LLM-as-a-Judge gate enabled versus bypassed:
+
+| Benchmark Metric | 🛡️ Judge ON (`eval-judge-on`) | ⚡ Judge OFF (`eval-judge-off`) | Delta / Architectural Impact |
+|---|:---:|:---:|---|
+| **Run Status** | `FINISHED` | `FINISHED` | Both suites executed 100% of the torture questions to completion |
+| **Questions Evaluated (`QS`)** | **122** | **122** | Identical dataset: adversarial traps + real SQL questions + counterfactuals |
+| **Correctness Rate (`CORRECT`)** | **97%** | **99%** | Factual precision vs live ground truth database records |
+| **Hallucination Rate (`HALLUC.`)** | **0%** 🎯 | **0%** 🎯 | **Zero hallucination across the board.** The agent refuses to fabricate nonexistent PRs |
+| **Faithfulness Score (`FAITHFUL.`)** | **98%** 🔥 | **90%** | **+8.0% Faithfulness Boost** — claims are strictly grounded in retrieved tool outputs |
+| **Average Latency (`AVG LAT.`)** | `6.4s` | `3.3s` | Includes dual-pass pipeline (actor generation + independent judge audit) |
+| **P95 Latency (`P95`)** | `9.7s` | `5.4s` | P95 latency boundary under complex database queries + judge verification |
+| **Average TTFT (`AVG TTFT`)** | `4.35s` | `2.9s` | Time to First Token before output stream begins |
+| **SSE Streaming** | `OFF` | `OFF` | Baseline non-streaming measurements |
+| **Grounding Gate Status** | **ACTIVE (`ON`)** | **BYPASSED (`OFF`)** | Evaluates response against tool outputs before serving the user |
+
+> **Key Takeaway:** Turning the Judge **ON** boosts Faithfulness from **90% to 98%** (+8%), while maintaining a **0% Hallucination rate**. The ~3.1s latency overhead reflects the asynchronous second-pass audit that guarantees enterprise-grade factual reliability for engineering leadership.
+
 - **Metrics (no deepeval package, by design):** `faithfulness` (judge model vs tool observations — the core hallucination metric) · `grounding` (free deterministic PR-reference gate) · `exact` (char-exact names/numbers) · `language` · `relevancy` · `avg/p95 latency`. Contextual recall/precision deliberately excluded (RAG-retrieval metrics — our retrieval is SQL).
 - **Fail is split in two:** `fail_fabrication_rate` (failed AND ungrounded — invented refs, typos, claims with no evidence: the number the CTO actually cares about) vs `fail_quality_rate` (failed BUT grounded — wrong count, indirect answer, language slip: strict-checker territory, not hallucination).
 - **Judge ON vs OFF:** run twice with the checkbox, compare `fail_rate` + `faithfulness_avg` side by side in the MLflow UI — that's the experiment that proves the gate's worth.
@@ -785,28 +804,265 @@ erDiagram
 
 ---
 
-## ⚙️ Configuration — .env Cheat Sheet
+## ⚙️ Configuration — Comprehensive Environment Variable Reference
 
-Copy `.env.example` → `.env` and fill secrets. **Never commit `.env`.**
+CTO Watch is configured via environment variables. To get started, duplicate the template file and populate your credentials:
 
-| Group | Keys | Notes |
-|---|---|---|
-| GitHub | `GITHUB_TOKEN` · `GITHUB_REPO` · `GITHUB_API_URL` · `GITHUB_POLL_INTERVAL_SECONDS=30` · `PR_STALE_THRESHOLD_DAYS=5` | Token needs `repo` read; poll drives auto-summaries |
-| Bedrock | `BEDROCK_API_KEY` · `BEDROCK_BASE_URL_QWEN` · `BEDROCK_MODEL=qwen.qwen3-32b` · `BEDROCK_VISION_MODEL` | Primary agent model |
-| JEV | `JEV_API_KEY` · `JEV_API_URL` · `JEV_MODEL=jev-latest` | Impact 1–10; missing key ⇒ neutral 5.0 |
-| Groq | `GROQ_API_KEY` · `GROQ_MODEL` · `GROQ_BACKUP_MODEL` | Fallback chain `20b → 120b` |
-| Tuning | `LLM_TEMPERATURE=0.2` · `LLM_MAX_TOKENS=1024` · `LLM_REASONING_EFFORT=""` | Executive-dense, zero reasoning overhead for maximum speed |
-| Breaker | `CIRCUIT_BREAKER_COOLDOWN_SECONDS=1800` · `CIRCUIT_BREAKER_PROBE_PROMPT=ping` | 30-min fallback window |
-| App | `APP_HOST` · `APP_PORT=8000` · `STATIC_DIR=web` | — |
-| MySQL | `MYSQL_HOST=mysql` · `MYSQL_PORT=3306` · `MYSQL_USER/PASSWORD/DATABASE` · `DATABASE_URL=` | Compose overrides host/port; CLI uses `127.0.0.1:3307` |
-| Chat | `CHAT_MEMORY_WINDOW_SIZE=10` · `CHAT_QUERY_REWRITE_WINDOW_SIZE=2` | Short-term memory + follow-up rewrite |
-| Judge | `JUDGE_ENABLED=true` · `JUDGE_MODEL=openai.gpt-oss-20b` (Bedrock) · `JUDGE_MAX_TOKENS=1024` · `JUDGE_RETRIES=1` · `JUDGE_FALLBACK_MODEL=openai/gpt-oss-20b` (Groq) | Grounding gate for chat replies (audits every answer against tool outputs; empty responses retry then fall back) |
-| Emails | `EMAIL_ENABLED=false` · `EMAIL_ADDRESS` · `EMAIL_PASSWORD` (App Password) · `EMAIL_POLL_INTERVAL_MINUTES=3` | Read-only IMAP triage; creds in `.env` only, never committed |
-| Eval | `MLFLOW_TRACKING_URI=sqlite:///./mlruns/mlflow.db` · `EVAL_MAX_CONCURRENCY=3` | Local MLflow store (mounted volume); `mlflow ui` to browse; 3 parallel question groups |
-| Celery | `CELERY_BROKER_URL` · `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` |
-| Reports | `REPORT_TIMEZONE=Africa/Cairo` · `REPORT_HOUR=8` · `REPORT_MINUTE=0` · `REPORTS_DIR=reports` · `REPORT_LANGUAGE=English` | English-only keeps PDFs LTR-clean |
-| Voice | `DEEPGRAM_API_KEY` · `DEEPGRAM_AGENT_MODEL=nova-3` · `DEEPGRAM_VOICE_MODEL=aura-asteria-en` | Missing key ⇒ voice gracefully disabled |
-| Gate | `CTO_PASSWORD` · `SESSION_SECRET` · `SESSION_MAX_AGE_HOURS=12` · `REMEMBER_ME_DAYS=7` · `TOTP_ISSUER` · `AUTH_MAX_ATTEMPTS` · `AUTH_LOCKOUT_SECONDS` | Fail-closed when empty |
+```bash
+cp .env.example .env
+```
+
+> [!WARNING]
+> **Never commit your `.env` file to version control.** It contains highly sensitive production credentials, API tokens, S3 secret keys, and database passwords.
+
+Every variable available in [`.env.example`](file:///d:/CTO_MULTI_AGENT/.env.example) is documented below by functional category, detailing its type, default value, and exact architectural role.
+
+---
+
+### 1 · GitHub Integration
+Controls synchronization with GitHub repositories, polling cadences, and Pull Request staleness criteria.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `GITHUB_TOKEN` | `your_github_token_here` | String | Personal Access Token (PAT) or fine-grained GitHub token with `repo` read/write permissions. Used by `GitHubCollector` to fetch commits, PRs, diffs, reviews, and CI status. |
+| `GITHUB_REPO` | `SeifMahmoud63/CTO-Copilot` | String | Target repository identifier in `owner/repo` format audited by the multi-agent system. |
+| `GITHUB_API_URL` | `https://api.github.com` | URL | Base REST API endpoint for GitHub. Change to an enterprise URL (e.g. `https://github.corp.internal/api/v3`) for GitHub Enterprise Server. |
+| `GITHUB_POLL_INTERVAL_SECONDS` | `30` | Integer | Background polling interval in seconds. Defines how frequently the daemon queries GitHub for newly opened or updated PRs. |
+| `PR_STALE_THRESHOLD_DAYS` | `5` | Integer | Inactivity threshold in days. Open PRs without code pushes or review activity exceeding this limit are flagged as stale in executive briefings and SLA alerts. |
+
+---
+
+### 2 · AWS Bedrock / Mantle API (Primary Summarization & Inference)
+Powers the primary summarization pipelines, PR risk analysis, and executive report authoring.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `BEDROCK_API_KEY` | `your_bedrock_api_key_here` | String | Bearer authorization API key used to authenticate with Bedrock Mantle / AWS gateway endpoints. |
+| `BEDROCK_BASE_URL` | `https://bedrock-mantle.us-west-2.api.aws/openai/v1` | URL | OpenAI-compatible endpoint URL for routing inference requests through AWS Bedrock. |
+| `BEDROCK_BASE_URL_QWEN` | `https://bedrock-mantle.us-west-2.api.aws/v1` | URL | Dedicated base URL for routing Qwen foundation models to prevent route collision with OpenAI proxy endpoints. |
+| `BEDROCK_VISION_MODEL` | `us.amazon.nova-pro-v1:0` | String | Multimodal vision model identifier used for analyzing architectural diagrams, UI diff screenshots, and visual assets. |
+| `BEDROCK_MODEL` | `qwen.qwen3-32b` | String | Primary foundation model identifier for automated PR code reviews, technical risk scoring, and daily reports. |
+| `AWS_ACCESS_KEY_ID` | `your_aws_access_key` | String | Standard AWS IAM access key ID for native AWS SDK / boto3 sessions. |
+| `AWS_SECRET_ACCESS_KEY` | `your_aws_secret_key` | String | Standard AWS IAM secret access key matching `AWS_ACCESS_KEY_ID`. |
+| `AWS_REGION` | `us-west-2` | String | Primary AWS region where Bedrock foundation models are provisioned. |
+| `AWS_DEFAULT_REGION` | `us-west-2` | String | Fallback AWS region variable for underlying AWS CLI and SDK client libraries. |
+
+---
+
+### 3 · JEV Decision Engine (Impact & Urgency Scoring)
+Assigns quantitative impact and business urgency scores (1.0 to 10.0) to every Pull Request.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `JEV_API_KEY` | `your_jev_api_key_here` | String | Secret API key for authenticating with the TypeSafe JEV SystemOne decision engine. |
+| `JEV_API_URL` | `https://api.typesafe.ai/v1/systemone` | URL | Target REST API endpoint for the JEV decision scoring engine. |
+| `JEV_MODEL` | `jev-latest` | String | Model release tag for JEV scoring. If `JEV_API_KEY` is omitted or invalid, the engine gracefully degrades to a neutral score of `5.0`. |
+
+---
+
+### 4 · Google Gemini (Chatbot Actor)
+Drives the conversational CTO Copilot agent when configured as the primary chat actor.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `GEMINI_API_KEY` | `your_gemini_api_key_here` | String | Google AI Studio API key used to execute multi-turn conversational tool calling. |
+| `GEMINI_CHAT_MODEL` | `gemini-3.1-pro-preview` | String | Active Gemini model ID for chat interactions (alternatives include `gemini-3.8-flash`). |
+| `CHAT_PROVIDER` | `gemini` | String | Chat actor provider selector (`gemini` or `bedrock`). Allows running the chatbot actor on Gemini while keeping the Judge and summaries on Bedrock. |
+
+---
+
+### 5 · Groq Cloud (High-Speed Fallback Chain & Judge Backup)
+Provides ultra-low-latency LPU failover execution if primary providers suffer rate limits (429) or outages (5xx).
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `GROQ_API_KEY` | `your_groq_api_key_here` | String | Groq Cloud authorization API key. |
+| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | URL | OpenAI-compatible endpoint base URL for Groq LPU inference. |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | String | Primary high-speed fallback model automatically engaged if primary Bedrock/Gemini requests fail. |
+| `GROQ_BACKUP_MODEL` | `openai/gpt-oss-120b` | String | Secondary high-capacity fallback model in the multi-tier provider resilience chain. |
+
+---
+
+### 6 · LLM Hyperparameters & Reasoning
+Governs output determinism, response length boundaries, and reasoning depth across all models.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `LLM_TEMPERATURE` | `0.2` | Float | Sampling temperature. Kept strictly low (`0.2`) to guarantee factual consistency, high determinism, and reliable tool call argument parsing. |
+| `LLM_MAX_TOKENS` | `1024` | Integer | Hard token output ceiling per generation. Prevents verbose runaway answers and maintains concise executive briefings. |
+| `LLM_REASONING_EFFORT` | `high` | String | Reasoning effort level for reasoning-capable models (`low`, `medium`, `high`, or empty string). Setting to `low` achieves ~3x faster latency while maintaining factual rigor. |
+
+---
+
+### 7 · Circuit Breaker (Resilience Governor)
+Protects against cascading external API failures and runaway billing loops.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `CIRCUIT_BREAKER_COOLDOWN_SECONDS` | `1800` | Integer | Cooldown duration in seconds (30 minutes) that the circuit breaker remains in `OPEN` state after repeated provider failures before testing recovery. |
+| `CIRCUIT_BREAKER_PROBE_PROMPT` | `ping` | String | Minimalist synthetic health probe prompt sent during the `HALF-OPEN` state to verify upstream provider recovery before re-opening traffic. |
+
+---
+
+### 8 · Application Server
+Configures the FastAPI HTTP application runtime and static file serving.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `APP_HOST` | `0.0.0.0` | IP | Host interface binding. `0.0.0.0` binds to all network interfaces to permit Docker container ingress. |
+| `APP_PORT` | `8000` | Integer | Internal HTTP server port listened on by Uvicorn. |
+| `STATIC_DIR` | `web` | Path | Relative directory path containing the built frontend single-page application (HTML, CSS, JS bundles). |
+
+---
+
+### 9 · MySQL Database
+Configures relational storage for PR metadata, automated reviews, triage audits, and chat history.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `MYSQL_HOST` | `mysql` | String | Database hostname (`mysql` inside the Docker Compose network; `127.0.0.1` when running directly on the host machine). |
+| `MYSQL_PORT` | `3306` | Integer | MySQL service port inside Docker (`3306`; host exposed port is mapped to `3307` to prevent collisions with existing host MySQL services). |
+| `MYSQL_USER` | `cto_user` | String | Primary application database user account. |
+| `MYSQL_PASSWORD` | `cto_password_2026` | String | Password for the application database user. |
+| `MYSQL_DATABASE` | `cto_copilot_db` | String | Target database schema name housing all CTO Watch business tables. |
+| `MYSQL_ROOT_PASSWORD` | `cto_root_password_2026` | String | Administrative MySQL root password used for database container provisioning. |
+| `DATABASE_URL` | *(empty)* | Connection URI | Full SQLAlchemy connection URI (e.g. `mysql+pymysql://cto_user:cto_password_2026@mysql:3306/cto_copilot_db`). If left blank, it is automatically constructed from the individual `MYSQL_*` parameters. |
+
+---
+
+### 10 · Chatbot Agent & Memory
+Controls conversational sliding context windows, pronoun resolution rewrite depth, and token streaming.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `CHAT_MEMORY_WINDOW_SIZE` | `10` | Integer | Maximum number of preceding conversational dialogue turns retained in the active context window. |
+| `CHAT_QUERY_REWRITE_WINDOW_SIZE` | `2` | Integer | Number of prior conversational turns passed to the query rewriter to de-reference ambiguous pronouns (e.g., "What about the second PR?") into self-contained SQL questions. |
+| `CHAT_SSE_ENABLED` | `false` | Boolean | Default boot switch for Server-Sent Events (SSE) token streaming. Can also be dynamically toggled at runtime via `POST /api/chat/sse`. |
+
+---
+
+### 11 · Celery Distributed Queue & Redis
+Powers background worker task distribution for PDF generation, GitHub polling, and Eval Lab benchmarks.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` | URL | Redis connection URL serving as the message broker for Celery tasks. |
+| `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` | URL | Redis connection URL utilized to store Celery task completion results and state transitions. |
+
+---
+
+### 12 · Daily CTO Report (Celery Beat Scheduler)
+Controls the automated cron schedule, format, and localization for daily executive briefings.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `REPORT_TIMEZONE` | `Africa/Cairo` | String | IANA timezone identifier governing the exact execution schedule for the daily report task. |
+| `REPORT_HOUR` | `8` | Integer | Scheduled hour of execution (0–23 in 24h format; `8` triggers at 08:00 AM local time). |
+| `REPORT_MINUTE` | `0` | Integer | Scheduled minute of execution (0–59). |
+| `REPORTS_DIR` | `reports` | Path | Local working directory where generated daily PDF briefings are staged before being uploaded to MinIO S3. |
+| `REPORT_LANGUAGE` | `English` | String | Natural language used to compose executive briefings. Kept strictly in English to ensure pristine left-to-right (LTR) PDF typography. |
+
+---
+
+### 13 · Deepgram Live Voice Agent
+Enables real-time, low-latency duplex voice conversations with CTO Copilot over WebSockets.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `DEEPGRAM_API_KEY` | `your_deepgram_api_key_here` | String | Deepgram API key enabling speech-to-text transcription and text-to-speech audio synthesis. |
+| `DEEPGRAM_AGENT_MODEL` | `nova-3` | String | Speech recognition model identifier delivering high-accuracy real-time transcription. |
+| `DEEPGRAM_VOICE_MODEL` | `aura-asteria-en` | String | Natural neural voice persona synthesizer identifier. |
+| `DEEPGRAM_AGENT_URL` | `wss://agent.deepgram.com/v1/agent/converse` | URL | Full WebSocket gateway endpoint for real-time bi-directional voice streaming. |
+
+---
+
+### 14 · Access Gate & Authentication (TOTP / MFA)
+Secures the executive web portal and REST endpoints against unauthorized access.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `CTO_PASSWORD` | `change_me_to_a_strong_password` | String | Shared master password required to access the dashboard and APIs. **Fails closed** if left blank. |
+| `SESSION_SECRET` | `generate_with_python_secrets...` | String | High-entropy cryptographic secret key used to sign HMAC session tokens and cookies. Generate via `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `SESSION_MAX_AGE_HOURS` | `12` | Integer | Standard session validity duration in hours before re-authentication is mandatory. |
+| `REMEMBER_ME_DAYS` | `7` | Integer | Extended session lifespan in days when the "Remember Me" checkbox is enabled during login. |
+| `TOTP_ISSUER` | `CTO-Copilot` | String | Organization issuer label displayed in authenticator applications (e.g., Google Authenticator, 1Password) upon scanning the QR code. |
+| `AUTH_MAX_ATTEMPTS` | `3` | Integer | Maximum consecutive invalid login attempts allowed per IP address before triggering an automatic lockout. |
+| `AUTH_LOCKOUT_SECONDS` | `1800` | Integer | Lockout penalty window in seconds (30 minutes) enforced after exceeding `AUTH_MAX_ATTEMPTS`. |
+
+---
+
+### 15 · LLM-as-a-Judge (Grounding Gate)
+Prevents hallucinated claims by performing an independent second-pass verification against live SQL tool outputs.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `JUDGE_ENABLED` | `true` | Boolean | Master switch for the Grounding Gate. When `true`, every chatbot reply is independently audited against retrieved tool outputs before reaching the user. |
+| `JUDGE_MODEL` | `openai.gpt-oss-20b` | String | Primary Bedrock model identifier executing the factual grounding and faithfulness audit. |
+| `JUDGE_MAX_TOKENS` | `1024` | Integer | Maximum token budget allocated for the judge verification decision. |
+| `JUDGE_RETRIES` | `1` | Integer | Number of immediate retry attempts executed if the judge model returns an empty or unparseable response. |
+| `JUDGE_FALLBACK_MODEL` | `openai/gpt-oss-20b` | String | Backup judge model identifier routed via Groq. Hosted on independent infrastructure so that an AWS outage does not disable the grounding audit. |
+
+---
+
+### 16 · Eval Lab Execution
+Controls execution throughput and resource allocation during empirical torture testing.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `EVAL_MAX_CONCURRENCY` | `3` | Integer | Maximum number of parallel question suites executed simultaneously during Eval Lab benchmark runs (`1` enforces purely sequential execution). |
+
+---
+
+### 17 · Email Triage (Read-Only IMAP)
+Autonomously monitors engineering and security email threads, categorizing urgency and filing actionable tickets.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `EMAIL_ENABLED` | `false` | Boolean | Master switch enabling or disabling background email inbox triage. |
+| `EMAIL_IMAP_HOST` | `imap.gmail.com` | Hostname | IMAP server hostname used to retrieve incoming messages. |
+| `EMAIL_IMAP_PORT` | `993` | Integer | Secure IMAP port (SSL/TLS). |
+| `EMAIL_ADDRESS` | *(empty)* | Email | Dedicated inbox email address audited by the agent. |
+| `EMAIL_PASSWORD` | *(empty)* | Secret | Dedicated App Password for the mailbox (never use your primary account password). |
+| `EMAIL_MAILBOX` | `INBOX` | String | Target remote mailbox folder scanned during triage cycles. |
+| `EMAIL_UNREAD_ONLY` | `true` | Boolean | When `true`, only unread messages are processed and subsequently marked as reviewed. |
+| `EMAIL_POLL_INTERVAL_MINUTES` | `3` | Integer | Background polling cadence in minutes between mailbox inspections. |
+| `EMAIL_MAX_BODY_CHARS` | `4000` | Integer | Character truncation limit per email body to prevent context window saturation from large signatures or log dumps. |
+
+---
+
+### 18 · Slack Bot Integration
+Delivers proactive SLA breach warnings and automated daily PDF briefing distribution to Slack.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `SLACK_ENABLED` | `false` | Boolean | Master switch enabling or disabling real-time Slack notifications. |
+| `SLACK_BOT_TOKEN` | `xoxb-your-slack-bot-token` | String | Slack Bot User OAuth Token with `chat:write` and `files:write` scopes. |
+| `SLACK_CHANNEL_ID` | `C0123456789` | String | Designated Slack channel ID where alerts, critical PR warnings, and daily PDFs are posted. |
+
+---
+
+### 19 · MinIO S3 Object Storage
+Provides enterprise S3-compatible cloud object storage for PDF reports, MLflow experiment artifacts, and benchmark progress data.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `MINIO_ENDPOINT` | `http://localhost:9000` | URL | S3 API endpoint URL (`http://localhost:9000` on host; `http://minio:9000` inside Docker Compose). MinIO Web UI console runs at `http://localhost:9001`. |
+| `MINIO_ACCESS_KEY` | `cto-minio-admin` | String | Administrative access key (username) for MinIO S3 storage. |
+| `MINIO_SECRET_KEY` | `change_me_to_a_very_strong_38char...` | String | High-entropy secret key for MinIO S3 authentication. |
+| `MINIO_BUCKET_REPORTS` | `cto-reports` | String | S3 bucket name designated for permanent storage of daily PDF and HTML executive reports. |
+| `MINIO_BUCKET_MLFLOW` | `mlflow-artifacts` | String | S3 bucket name holding MLflow evaluation benchmark artifacts, models, and run outputs. |
+| `MINIO_BUCKET_PROGRESS` | `eval-progress` | String | S3 bucket name holding real-time evaluation benchmark task progress counters. |
+| `MINIO_SECURE` | `false` | Boolean | Set to `true` when using HTTPS/TLS on the MinIO endpoint, or `false` for standard plaintext HTTP. |
+
+---
+
+### 20 · MLflow Tracking & Artifact Storage
+Tracks empirical evaluation runs, LLM grounding metrics, latency distributions, and parameter configurations.
+
+| Variable | Default / Example | Type | Description |
+|---|---|:---:|---|
+| `MLFLOW_TRACKING_URI` | `mysql+pymysql://cto_user:cto_password_2026@mysql:3306/mlflow_db` | Connection URI | Storage location for MLflow experiment runs and metric timeseries. In Docker Compose, uses dedicated isolated database `mlflow_db`. For quick local dev without Docker, use `sqlite:///./mlruns/mlflow.db`. |
+| `MLFLOW_S3_ENDPOINT_URL` | `http://localhost:9000` | URL | S3 API endpoint allowing the MLflow tracking client to upload `results.json` and artifact logs directly to MinIO. |
 
 ---
 
