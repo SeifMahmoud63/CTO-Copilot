@@ -1,6 +1,6 @@
 """Unit tests for the Cairo-day emails tool + UTC range helper.
 
-Covers: DST-aware day bounds (the "جالي ايميل انهارده؟" incident class),
+Covers: DST-aware day bounds (the "galy email inhardah?" incident class),
 day-filtered email fetch on sqlite (boundary + hidden + undated rows),
 and the recent_emails tool wiring (mirrors test_chat_report_tool.py).
 

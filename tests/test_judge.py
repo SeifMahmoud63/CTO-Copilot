@@ -267,7 +267,7 @@ def test_has_number_claim():
 
 
 def test_spelled_out_number_forces_judge_review(monkeypatch):
-    # "واحد" with zero observations must reach the judge (mocked PASS here) —
+    # "wahed" with zero observations must reach the judge (mocked PASS here) —
     # previously it skipped review entirely and a guessed reply went through.
     from app.core.config import settings
 
@@ -444,7 +444,7 @@ def test_gate_passes_grounded_iso_date():
 
 
 def test_gate_skips_human_form_dates():
-    # "11 أكتوبر" is unverifiable without an LLM — never fail it here.
+    # "11 October" is unverifiable without an LLM — never fail it here.
     svc = JudgeService()
     res = svc.deterministic_gate("آخر PR كان يوم 11 أكتوبر.", OBS_PR5)
     assert res["verdict"] == "PASS"

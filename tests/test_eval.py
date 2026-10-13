@@ -90,7 +90,7 @@ def test_reply_numbers_words():
     assert reply_numbers("three PRs and #5") == {3, 5}
     assert reply_numbers("someone asked") == set()
     assert reply_numbers("مفيش حاجة") == set()
-    # Egyptian dialect "one" (count-yesterday replies like "PR وحدة").
+    # Egyptian dialect "one" (count-yesterday replies like "PR wahda").
     assert reply_numbers("امبارح اتفتح PR وحدة") == {1}
     assert reply_numbers("اتفتح PR وحد") == {1}
 

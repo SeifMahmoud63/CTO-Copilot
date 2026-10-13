@@ -28,7 +28,7 @@ def cairo_day_utc_range(day_iso: str, tz_name: str = "Africa/Cairo") -> Optional
     """One Cairo calendar day -> [start, end) as naive UTC datetimes.
 
     Email/PR timestamps are stored naive-UTC, while users ask about Cairo
-    days ("انهارده"). Comparing DATE(col) against the DB-server day drops
+    days ("today"). Comparing DATE(col) against the DB-server day drops
     everything between Cairo midnight and the UTC offset (currently 3h).
     Resolving the day bounds in Python (ZoneInfo, DST-aware) fixes the whole
     class at once — never hardcode +2/+3 in SQL.

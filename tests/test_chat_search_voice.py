@@ -22,7 +22,7 @@ def test_datetime_tool_returns_cairo_time():
     assert out["timezone"] == "Africa/Cairo"
     assert len(out["date"]) == 10 and len(out["time"]) == 5
     assert out["weekday"]
-    # Yesterday rides along so "امبارح كان تاريخ كام؟" is tool-grounded.
+    # Yesterday rides along so the "yesterday" date question stays tool-grounded.
     assert out["yesterday"] == str(date.fromisoformat(out["date"]) - timedelta(days=1))
 
 

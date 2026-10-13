@@ -581,7 +581,7 @@ TODAY_WORDS = {"today", "tonight", "now", "النهاردة", "انهارده", 
 YESTERDAY_WORDS = {"yesterday", "امبارح", "أمس", "امس"}
 
 # Time markers that must survive a query rewrite: dropping them changes the
-# question ("عندنا كام PR انهارده؟" -> "هات عدد PR" is a DIFFERENT question).
+# question ("andana kam PR inhardah?" -> "hat adad PR" is a DIFFERENT question).
 # Token-based matching (not substring) so "now" never matches "know".
 TIME_MARKER_TOKENS = set(TODAY_WORDS) | set(YESTERDAY_WORDS) | {
     "week", "month", "year", "الأسبوع", "الاسبوع", "الشهر", "شهر",
@@ -595,8 +595,8 @@ def _has_time_marker(text: str) -> bool:
     if not text:
         return False
     lowered = text.strip().lower()
-    # \w = Unicode letters/digits/underscore only — Arabic punctuation (?, ،)
-    # must NOT glue itself to the word ("انهارده؟" -> "انهارده").
+    # \w = Unicode letters/digits/underscore only — Arabic punctuation (U+061F "?", U+060C ",")
+    # must NOT glue itself to the word ("inhardah?" -> "inhardah").
     tokens = set(re.findall(r"\w+", lowered))
     if tokens & TIME_MARKER_TOKENS:
         return True
@@ -870,7 +870,7 @@ class _TokenTap:
 def _current_time_context() -> str:
     """Current Cairo wall-clock, injected into every agent turn.
 
-    Without this the model answers date questions ("وانهارده كام؟") from
+    Without this the model answers date questions ("wa-inhardah kam?", "what date is today") from
     training memory (stale year 2023) instead of calling a tool — and no
     judge gate catches it, because dateless prose has no PR refs to verify.
     Deterministic per turn and DST-aware via ZoneInfo: no external calendar
@@ -1198,7 +1198,7 @@ class ChatService:
         gate ('general' queries — smalltalk, definitions, advice).
 
         `prev_obs` carries the previous turn's VERIFIED tool outputs, so
-        follow-ups ("من مين؟") stay grounded without forcing a redundant
+        follow-ups ("men mein?", "from whom?") stay grounded without forcing a redundant
         re-query every turn. The gate sees previous + current evidence.
 
         Returns {"reply": ..., "verdict": PASS | PASS_AFTER_RETRY | FALLBACK,

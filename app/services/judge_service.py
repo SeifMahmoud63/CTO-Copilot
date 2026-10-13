@@ -38,7 +38,7 @@ EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 # event to an ISO date must have that literal in the observations (every tool
 # output carries ISO timestamps, so a grounded date always matches). Catches
 # the "latest PR was today" class where the model stitches the injected today
-# onto a row from another day. Human-form dates ("12 أكتوبر") are skipped —
+# onto a row from another day. Human-form dates ("12 October") are skipped —
 # only exact ISO literals are verifiable without an LLM.
 ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
@@ -92,7 +92,7 @@ def _ref_in_denial_context(low: str, start: int, end: int, prev_end: int,
     """True if a denial marker attaches to THIS ref (not a neighboring one).
 
     The before-window starts after the previous ref match, so one ref's
-    denial ("لا يوجد PR #999. لكن PR #9…") never bleeds onto the next ref.
+    denial ("no PR #999, but PR #9…") never bleeds onto the next ref.
     """
     before = low[max(prev_end, start - window):start]
     after = low[end:end + after_window]
@@ -192,7 +192,7 @@ def verify_authors(reply: str, known: set) -> Dict[str, Any]:
     return {"verdict": "PASS", "reason": "no mistyped authors"}
 
 # Spelled-out numbers (cardinals 0-10, Arabic + English, Egyptian spellings
-# included): a hallucinated "واحد"/"one" must trigger the judge exactly like
+# included): a hallucinated "wahed"/"one" must trigger the judge exactly like
 # a hallucinated "1" — digit-only checks are blind to it.
 NUMBER_WORDS = {
     "صفر",
@@ -319,7 +319,7 @@ class JudgeService:
     ) -> Dict[str, Any]:
         """PR refs + email-address + ISO-date + author-typo checks (zero LLM).
 
-        Refs are structural (#N or Arabic رقم N — never a name list).
+        Refs are structural (#N or Arabic "raqm N" — never a name list).
         Refs that appear ONLY inside denial context ("no PR #999") are not
         fabrication claims: they skip the instant FAIL and defer to the LLM
         judge, which understands denials.

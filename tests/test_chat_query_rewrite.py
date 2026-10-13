@@ -149,7 +149,7 @@ def test_rewrite_prompt_has_time_preservation_rule():
 
 
 def test_rewrite_prompt_normalizes_bare_day_kam():
-    # "وانهارده كام؟" (no countable noun) means "what DATE is today" — the
+    # "wa-inhardah kam?" (no countable noun) means "what DATE is today" — the
     # rule must be spelled out or the agent asks back instead of answering.
     prompt = chat_module.QUERY_REWRITE_PROMPT
     assert "تاريخ كام" in prompt
@@ -157,7 +157,7 @@ def test_rewrite_prompt_normalizes_bare_day_kam():
 
 
 def test_rewrite_dropping_time_marker_falls_back_to_original():
-    # The live incident: "عندنا كام PR انهارده؟" rewritten to "هات عدد PR"
+    # The live incident: "andana kam PR inhardah?" rewritten to "hat adad PR"
     # answers a DIFFERENT question — the original must win.
     service = make_service("هات عدد PR اللي عندنا حاليًا.")
     out = run(service._rewrite_query(HISTORY, "عندنا كام PR انهارده؟"))
@@ -207,7 +207,7 @@ def test_directness_and_dialect_rules_in_prompts():
 
 
 def test_oldest_latest_order_rule_in_prompt():
-    # The live incident: "أقدم PR" answered with ORDER BY number DESC.
+    # The live incident: "aqdam PR" answered with ORDER BY number DESC.
     prompt = chat_module.SYSTEM_PROMPT
     assert "Oldest vs latest" in prompt
     assert "NEVER invert ASC/DESC" in prompt

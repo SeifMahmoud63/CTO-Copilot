@@ -307,7 +307,7 @@ def build_curated(ctx: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _date_checker(iso: str):
-    """Accept ISO (2026-10-05) or the human form the agent uses (5 أكتوبر)."""
+    """Accept ISO (2026-10-05) or the human form the agent uses (5 October)."""
     day_n = int(iso[8:10])
     month_words = set(ARABIC_MONTHS) | set(ENGLISH_MONTHS)
 
