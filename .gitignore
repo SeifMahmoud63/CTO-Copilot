@@ -72,6 +72,9 @@ videos/
 vidoe/
 cto-watch-demo.mp4
 
+# Documentation & screenshots
+docs/
+
 # IDEs & OS
 .idea/
 .vscode/
