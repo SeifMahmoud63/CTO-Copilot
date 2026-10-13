@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CTO Watch | تسجيل الدخول</title>
+  <title>CTO Watch | Sign In</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css?v=3">
@@ -54,39 +54,39 @@
           <span class="brand-sub">Team Radar &amp; Ops</span>
         </div>
       </div>
-      <h1>تسجيل الدخول</h1>
-      <p class="sub">Restricted area — sign in to continue / منطقة محمية</p>
+      <h1>Sign In</h1>
+      <p class="sub">Restricted area — sign in to continue</p>
 
       <div id="loginErr" class="login-err"></div>
 
       <!-- Password step -->
       <div id="stepPassword">
         <div class="login-field">
-          <label for="passwordInput">كلمة السر / Password</label>
+          <label for="passwordInput">Password</label>
           <input id="passwordInput" type="password" autocomplete="current-password" placeholder="••••••••">
         </div>
-        <button id="passwordNextBtn" class="login-btn">متابعة / Continue</button>
+        <button id="passwordNextBtn" class="login-btn">Continue</button>
       </div>
 
       <!-- TOTP enrollment -->
       <div id="stepEnroll" class="hidden">
-        <div class="login-steps">1) افتح <b>Google Authenticator</b> على موبايلك<br>2) اعمل Scan للـ QR ده<br>3) اكتب الـ 6 أرقام اللي ظهروا تحت</div>
+        <div class="login-steps">1) Open <b>Google Authenticator</b> on your phone<br>2) Scan this QR code<br>3) Enter the 6-digit code below</div>
         <div class="login-qr"><img id="qrImg" alt="TOTP QR code"></div>
         <div class="login-field">
-          <label for="enrollCodeInput">كود الـ 6 أرقام / Authenticator code</label>
+          <label for="enrollCodeInput">6-digit Authenticator code</label>
           <input id="enrollCodeInput" inputmode="numeric" maxlength="6" placeholder="123456">
         </div>
-        <button id="enrollBtn" class="login-btn">تأكيد وتسجيل الدخول / Confirm</button>
+        <button id="enrollBtn" class="login-btn">Confirm &amp; Sign In</button>
       </div>
 
       <!-- TOTP verification -->
       <div id="stepCode" class="hidden">
         <div class="login-field">
-          <label for="codeInput">كود الـ 6 أرقام / Authenticator code</label>
+          <label for="codeInput">6-digit Authenticator code</label>
           <input id="codeInput" inputmode="numeric" maxlength="6" placeholder="123456">
         </div>
-        <label class="login-remember"><input id="rememberChk" type="checkbox" checked> افتكر الجهاز ده لمدة 7 أيام / Remember this device</label>
-        <button id="loginBtn" class="login-btn">دخول / Sign in</button>
+        <label class="login-remember"><input id="rememberChk" type="checkbox" checked> Remember this device for 7 days</label>
+        <button id="loginBtn" class="login-btn">Sign In</button>
       </div>
     </div>
   </div>
@@ -122,19 +122,19 @@
         const st = await res.json();
         enrolled = !!st.enrolled;
         if (!st.configured) {
-          showErr('السيرفر مش متظبط (CTO_PASSWORD / SESSION_SECRET ناقصين). كلم الأدمن.');
+          showErr('Server configuration incomplete (missing CTO_PASSWORD / SESSION_SECRET). Contact admin.');
           $('passwordNextBtn').disabled = true;
         }
-      } catch (e) { showErr('مش قادر أوصل للسيرفر.'); }
+      } catch (e) { showErr('Unable to reach server.'); }
     }
 
     $('passwordNextBtn').addEventListener('click', async () => {
       hideErr();
       savedPassword = $('passwordInput').value;
-      if (!savedPassword) { showErr('اكتب كلمة السر الأول.'); return; }
+      if (!savedPassword) { showErr('Please enter your password first.'); return; }
       if (!enrolled) {
         const r = await api('/api/auth/setup', { password: savedPassword });
-        if (!r.ok) { showErr(r.data.detail || 'كلمة السر غلط.'); return; }
+        if (!r.ok) { showErr(r.data.detail || 'Invalid password.'); return; }
         $('qrImg').src = r.data.qr_data_uri;
         hide('stepPassword'); show('stepEnroll');
       } else {
@@ -146,7 +146,7 @@
       hideErr();
       const code = $('enrollCodeInput').value.trim();
       const r = await api('/api/auth/verify', { password: savedPassword, code });
-      if (!r.ok) { showErr(r.data.detail || 'الكود غلط، حاول تاني.'); return; }
+      if (!r.ok) { showErr(r.data.detail || 'Invalid code, please try again.'); return; }
       window.location.href = '/';
     });
 
@@ -155,7 +155,7 @@
       const code = $('codeInput').value.trim();
       const remember = $('rememberChk').checked;
       const r = await api('/api/auth/login', { password: savedPassword, code, remember });
-      if (!r.ok) { showErr(r.data.detail || 'بيانات غلط.'); return; }
+      if (!r.ok) { showErr(r.data.detail || 'Invalid credentials.'); return; }
       window.location.href = '/';
     });
 

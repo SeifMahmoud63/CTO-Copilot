@@ -27,6 +27,33 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def test_chat_llm_wires_reasoning_effort(monkeypatch):
+    from app.core.config import settings
+    from langchain_openai import ChatOpenAI
+
+    real_init = ChatOpenAI.__init__
+    seen = {}
+
+    def spy_init(self, *args, **kwargs):
+        seen.update(kwargs)
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ChatOpenAI, "__init__", spy_init)
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "low")
+    chat_module.ChatService()
+    assert seen.get("extra_body") == {"reasoning_effort": "low"}
+
+    seen.clear()
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "")
+    chat_module.ChatService()
+    assert "extra_body" not in seen
+
+    seen.clear()
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "nonsense")
+    chat_module.ChatService()
+    assert "extra_body" not in seen
+
+
 HISTORY = [
     HumanMessage(content="مين عمل اكتر عدد PRs؟"),
     AIMessage(content="SeifMahmoud63 عمل 4 PRs."),
@@ -114,47 +141,42 @@ def test_rewrite_prompt_has_ordinal_resolution_rule():
     assert "NEVER output a" in prompt and "bare ordinal" in prompt
 
 
-def test_ordinal_resolves_to_concrete_item_arabic():
-    last_answer = "الـ PRs:\n- PR #10 عنوان أول\n- PR #7 عنوان تاني\n- PR #3 عنوان تالت"
-    out = chat_module._resolve_ordinal_reference("اه التانيه", last_answer)
-    assert out is not None
-    assert "#7" in out and "عنوان تاني" in out
-    assert "التانيه" not in out  # no bare ordinal left
-    assert "هات كل التفاصيل" in out  # user's own language (Arabic)
+def test_rewrite_prompt_has_time_preservation_rule():
+    prompt = chat_module.QUERY_REWRITE_PROMPT
+    assert "NEVER drop time/date constraints" in prompt
+    assert "انهارده" in prompt
+    assert "EXACTLY" in prompt
 
 
-def test_ordinal_resolves_english():
-    last_answer = "- PR #10 first\n- PR #7 second"
-    out = chat_module._resolve_ordinal_reference("the second one please", last_answer)
-    assert out is not None and "#7" in out and "Give full details" in out
+def test_rewrite_prompt_normalizes_bare_day_kam():
+    # "وانهارده كام؟" (no countable noun) means "what DATE is today" — the
+    # rule must be spelled out or the agent asks back instead of answering.
+    prompt = chat_module.QUERY_REWRITE_PROMPT
+    assert "تاريخ كام" in prompt
+    assert "NO countable noun" in prompt
 
 
-def test_ordinal_returns_none_when_not_applicable():
-    last_answer = "- PR #10 first\n- PR #7 second"
-    assert chat_module._resolve_ordinal_reference("ومين التاني عمل ايه كمان؟", last_answer) is None  # extra content
-    assert chat_module._resolve_ordinal_reference("اه الرابعه", last_answer) is None  # out of range
-    assert chat_module._resolve_ordinal_reference("اه التانيه", "") is None  # no answer
-    assert chat_module._resolve_ordinal_reference("ازيك عامل ايه", last_answer) is None  # no ordinal
+def test_rewrite_dropping_time_marker_falls_back_to_original():
+    # The live incident: "عندنا كام PR انهارده؟" rewritten to "هات عدد PR"
+    # answers a DIFFERENT question — the original must win.
+    service = make_service("هات عدد PR اللي عندنا حاليًا.")
+    out = run(service._rewrite_query(HISTORY, "عندنا كام PR انهارده؟"))
+    assert out == "عندنا كام PR انهارده؟"
 
 
-def test_ordinal_prefers_explicit_pr_number_over_position():
-    # The exact user complaint: list order [#1, #3, #2], "the second" = PR #2.
-    last_answer = (
-        "1. الريبوست #1: make the PR requests\n"
-        "2. الريبوست #3: Merge pull request\n"
-        "3. الريبوست #2: change in summary prompt"
-    )
-    out = chat_module._resolve_ordinal_reference("ابعتلي التاني بس بالتفصيل مش كلو", last_answer)
-    assert out is not None
-    assert "PR رقم 2" in out
-    assert "change in summary prompt" in out
-    assert "هو فقط" in out  # single-item scope, no dump
+def test_rewrite_preserving_time_marker_is_used():
+    service = make_service("كم عدد PR المنشأة اليوم؟")
+    out = run(service._rewrite_query(HISTORY, "عندنا كام PR انهارده؟"))
+    assert out == "كم عدد PR المنشأة اليوم؟"
 
 
-def test_ordinal_positional_fallback_without_numbers():
-    last_answer = "- أول عنصر: ألف\n- تاني عنصر: باء"
-    out = chat_module._resolve_ordinal_reference("اه التاني", last_answer)
-    assert out is not None and "باء" in out
+def test_has_time_marker():
+    assert chat_module._has_time_marker("عندنا كام PR انهارده؟") is True
+    assert chat_module._has_time_marker("لخص ريبورت امبارح") is True
+    assert chat_module._has_time_marker("PRs merged this week?") is True
+    assert chat_module._has_time_marker("I know the author") is False  # "now" != "know"
+    assert chat_module._has_time_marker("مين عمل اكتر عدد PRs؟") is False
+    assert chat_module._has_time_marker("") is False
 
 
 def test_response_discipline_in_prompts():
@@ -178,20 +200,23 @@ def test_conciseness_rules_in_prompts():
     assert "Tables ONLY when comparing" in prompt
 
 
-def test_rewrite_query_prefers_deterministic_ordinal_without_llm():
-    from unittest.mock import AsyncMock
+def test_directness_and_dialect_rules_in_prompts():
+    prompt = chat_module.SYSTEM_PROMPT
+    assert "state the single computed number FIRST" in prompt
+    assert "متعلقه" in prompt and "overdue" in prompt
 
-    from langchain_core.messages import AIMessage, HumanMessage
 
-    service = chat_module.ChatService.__new__(chat_module.ChatService)
-    service.llm = AsyncMock()
-    service.llm.ainvoke = AsyncMock(side_effect=AssertionError("LLM must not be called"))
-    history = [
-        HumanMessage(content="لخصلي الريبورت"),
-        AIMessage(content="القائمة:\n- PR #10 أول\n- PR #7 تاني"),
-    ]
-    out = asyncio.run(service._rewrite_query(history, "اه التانيه"))
-    assert "#7" in out
+def test_oldest_latest_order_rule_in_prompt():
+    # The live incident: "أقدم PR" answered with ORDER BY number DESC.
+    prompt = chat_module.SYSTEM_PROMPT
+    assert "Oldest vs latest" in prompt
+    assert "NEVER invert ASC/DESC" in prompt
+    assert "created_at" in prompt and "sent_at" in prompt
+
+
+def test_language_mismatch_rule_in_prompts():
+    prompt = chat_module.SYSTEM_PROMPT
+    assert "Language mismatch is a critical failure" in prompt
 
 
 class FakeScalars:
@@ -266,8 +291,9 @@ def test_send_message_uses_rewrite_window_and_keeps_original_in_db(monkeypatch):
     service = make_service("مين عمل تاني اكتر عدد PRs؟")
     captured = {}
 
-    async def fake_graph(messages):
+    async def fake_graph(messages, config=None):
         captured["messages"] = messages["messages"]
+        captured["config"] = config
         return {"messages": [AIMessage(content="final reply")]}
 
     service.graph = SimpleNamespace(ainvoke=fake_graph)
@@ -283,7 +309,9 @@ def test_send_message_uses_rewrite_window_and_keeps_original_in_db(monkeypatch):
     # Agent received the rewritten standalone query...
     agent_msgs = captured["messages"]
     assert isinstance(agent_msgs[-1], HumanMessage)
-    assert agent_msgs[-1].content == "مين عمل تاني اكتر عدد PRs؟"
+    assert agent_msgs[-1].content.endswith("مين عمل تاني اكتر عدد PRs؟")
+    # ...through the bounded ReAct loop config.
+    assert (captured["config"] or {}).get("recursion_limit") == chat_module.REACT_MAX_STEPS
 
     # ...while the DB kept the ORIGINAL user text.
     user_rows = [o for o in fake_session.added if type(o).__name__ == "ChatMessage" and o.role == "user"]

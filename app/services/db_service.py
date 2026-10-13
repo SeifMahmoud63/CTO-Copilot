@@ -1,10 +1,10 @@
 import logging
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy import select, func, desc
 
 from app.db.session import AsyncSessionLocal, init_db as _init_db
-from app.models import PullRequest, Engineer, DailyReport
+from app.models import PullRequest, Engineer, DailyReport, Email
 
 logger = logging.getLogger("cto-copilot.db_service")
 
@@ -22,6 +22,36 @@ def impact_tier_for(score: Optional[float]) -> str:
     if score >= 5.0:
         return "Solid Contributor"
     return "Routine Support"
+
+
+def cairo_day_utc_range(day_iso: str, tz_name: str = "Africa/Cairo") -> Optional[Tuple[datetime, datetime]]:
+    """One Cairo calendar day -> [start, end) as naive UTC datetimes.
+
+    Email/PR timestamps are stored naive-UTC, while users ask about Cairo
+    days ("انهارده"). Comparing DATE(col) against the DB-server day drops
+    everything between Cairo midnight and the UTC offset (currently 3h).
+    Resolving the day bounds in Python (ZoneInfo, DST-aware) fixes the whole
+    class at once — never hardcode +2/+3 in SQL.
+    Returns None for an unparseable day.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = timezone.utc
+    try:
+        parts = str(day_iso).strip().split("-")
+        if len(parts) != 3:
+            return None
+        start_local = datetime(int(parts[0]), int(parts[1]), int(parts[2]), tzinfo=tz)
+    except (ValueError, AttributeError):
+        return None
+    end_local = start_local + timedelta(days=1)
+    return (
+        start_local.astimezone(timezone.utc).replace(tzinfo=None),
+        end_local.astimezone(timezone.utc).replace(tzinfo=None),
+    )
 
 
 class DatabaseService:
@@ -69,6 +99,10 @@ class DatabaseService:
                         pr.html_url = html_url
                         pr.is_overdue = is_overdue
                         pr.overdue_days = overdue_days
+                        # created_at is immutable on GitHub, so always re-sync it:
+                        # this self-heals rows whose stored date predates the fix.
+                        if created_at:
+                            pr.created_at = created_at
                         if diff_url:
                             pr.diff_url = diff_url
                         if author_avatar:
@@ -206,6 +240,189 @@ class DatabaseService:
                 ]
         except Exception as e:
             logger.warning(f"Error fetching engineers: {e}")
+            return []
+
+    async def save_or_update_email(
+        self,
+        message_id: str,
+        sender: str = "unknown",
+        subject: str = "(no subject)",
+        sent_at: Optional[datetime] = None,
+        snippet: Optional[str] = None,
+        body_excerpt: Optional[str] = None,
+        summary_text: Optional[str] = None,
+        summary_provider: Optional[str] = None,
+        urgency_score: Optional[float] = None,
+        urgency_tier: Optional[str] = None,
+    ) -> Optional[Email]:
+        """Insert or update an email triage record (dedupe by Message-ID)."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(Email).where(Email.message_id == message_id)
+                    res = await session.execute(stmt)
+                    row = res.scalar_one_or_none()
+
+                    if row:
+                        row.sender = sender or row.sender
+                        row.subject = subject or row.subject
+                        if sent_at:
+                            row.sent_at = sent_at
+                        if snippet:
+                            row.snippet = snippet
+                        if body_excerpt:
+                            row.body_excerpt = body_excerpt
+                        if summary_text:
+                            row.summary_text = summary_text
+                        if summary_provider:
+                            row.summary_provider = summary_provider
+                        if urgency_score is not None:
+                            row.urgency_score = urgency_score
+                            row.urgency_tier = urgency_tier
+                    else:
+                        row = Email(
+                            message_id=message_id,
+                            sender=sender,
+                            subject=subject,
+                            sent_at=sent_at,
+                            snippet=snippet,
+                            body_excerpt=body_excerpt,
+                            summary_text=summary_text,
+                            summary_provider=summary_provider,
+                            urgency_score=urgency_score,
+                            urgency_tier=urgency_tier,
+                        )
+                        session.add(row)
+
+                    await session.flush()
+                    return row
+        except Exception as e:
+            logger.warning(f"Error saving email {message_id}: {e}")
+            return None
+
+    async def hide_email(self, email_id: int) -> bool:
+        """Dismiss an email from the list (soft-hide; the row stays for dedupe)."""
+        try:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    stmt = select(Email).where(Email.id == email_id)
+                    res = await session.execute(stmt)
+                    row = res.scalar_one_or_none()
+                    if not row:
+                        return False
+                    row.is_hidden = True
+                    return True
+        except Exception as e:
+            logger.warning(f"Error hiding email {email_id}: {e}")
+            return False
+
+    async def get_email_by_message_id(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch one stored email (used to skip already-triaged mail).
+
+        Hidden rows are included on purpose: a dismissed email must not be
+        re-fetched, re-summarized, and resurrected by the next poll.
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(Email).where(Email.message_id == message_id)
+                res = await session.execute(stmt)
+                row = res.scalar_one_or_none()
+                if not row:
+                    return None
+                return {
+                    "message_id": row.message_id,
+                    "summary_text": row.summary_text,
+                    "urgency_score": row.urgency_score,
+                    "urgency_tier": row.urgency_tier,
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching email {message_id}: {e}")
+            return None
+
+    async def get_emails(self, limit: int = 30, days: Optional[int] = 3) -> List[Dict[str, Any]]:
+        """List emails newest-first.
+
+        By default only the last `days` days (undated rows excluded — recency
+        cannot be proven for them). Pass days=None for the unfiltered list.
+        Undated rows always sink to the bottom (NULLS LAST).
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(Email)
+                if days is not None:
+                    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+                    stmt = stmt.where(Email.sent_at.isnot(None)).where(Email.sent_at >= cutoff)
+                stmt = stmt.where(Email.is_hidden.is_(False))
+                stmt = (
+                    stmt.order_by(
+                        Email.sent_at.isnot(None).desc(),
+                        desc(Email.sent_at),
+                        desc(Email.id),
+                    ).limit(max(1, limit))
+                )
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [
+                    {
+                        "id": r.id,
+                        "message_id": r.message_id,
+                        "sender": r.sender,
+                        "subject": r.subject,
+                        "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                        "snippet": r.snippet,
+                        "summary_text": r.summary_text,
+                        "summary_provider": r.summary_provider,
+                        "urgency_score": r.urgency_score,
+                        "urgency_tier": r.urgency_tier,
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logger.warning(f"Error fetching emails: {e}")
+            return []
+
+    async def get_emails_for_day(self, day_iso: str) -> List[Dict[str, Any]]:
+        """Emails received on one Cairo calendar day, newest first.
+
+        Bounds come from `cairo_day_utc_range` (DST-aware): a naive
+        DATE(sent_at) comparison would silently drop the first 2-3 hours of
+        every Cairo day (stored UTC vs asked Cairo). Hidden/dismissed rows
+        are excluded, undated rows never match a day.
+        """
+        bounds = cairo_day_utc_range(day_iso)
+        if bounds is None:
+            return []
+        start_utc, end_utc = bounds
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = (
+                    select(Email)
+                    .where(Email.sent_at.isnot(None))
+                    .where(Email.sent_at >= start_utc)
+                    .where(Email.sent_at < end_utc)
+                    .where(Email.is_hidden.is_(False))
+                    .order_by(desc(Email.sent_at), desc(Email.id))
+                    .limit(50)
+                )
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [
+                    {
+                        "id": r.id,
+                        "message_id": r.message_id,
+                        "sender": r.sender,
+                        "subject": r.subject,
+                        "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                        "snippet": r.snippet,
+                        "summary_text": r.summary_text,
+                        "summary_provider": r.summary_provider,
+                        "urgency_score": r.urgency_score,
+                        "urgency_tier": r.urgency_tier,
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logger.warning(f"Error fetching emails for day {day_iso}: {e}")
             return []
 
     async def save_report(

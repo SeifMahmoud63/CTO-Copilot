@@ -1,4 +1,4 @@
-"""Unit tests proving the Alembic setup migrates the 2-table schema correctly.
+"""Unit tests proving the Alembic setup migrates the app schema correctly.
 
 Run from the repo root:
     python -m pytest tests/ -v
@@ -16,8 +16,8 @@ from sqlalchemy import create_engine, inspect
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HEAD = "0003_auth_state"
-EXPECTED_TABLES = {"pull_requests", "engineers", "daily_reports", "auth_state"}
+HEAD = "0006_eval_fixtures"
+EXPECTED_TABLES = {"pull_requests", "engineers", "daily_reports", "auth_state", "emails", "eval_fixtures"}
 LEGACY_TABLES = ("pr_summaries", "pr_impact_scores", "pr_approvals", "audit_logs")
 
 
@@ -42,13 +42,16 @@ def test_single_head_no_branching():
     heads = script.get_heads()
     revisions = list(script.walk_revisions())
     assert list(heads) == [HEAD], f"expected single head, got {heads}"
-    assert len(revisions) == 3
+    assert len(revisions) == 6
     by_rev = {r.revision: r for r in revisions}
     assert by_rev["0002_daily_reports"].down_revision == "0001_initial_two_tables"
-    assert by_rev[HEAD].down_revision == "0002_daily_reports"
+    assert by_rev["0003_auth_state"].down_revision == "0002_daily_reports"
+    assert by_rev["0004_emails"].down_revision == "0003_auth_state"
+    assert by_rev["0005_email_dismiss"].down_revision == "0004_emails"
+    assert by_rev[HEAD].down_revision == "0005_email_dismiss"
 
 
-def test_upgrade_head_creates_exactly_two_tables(tmp_path, monkeypatch):
+def test_upgrade_head_creates_expected_tables(tmp_path, monkeypatch):
     db = tmp_path / "fresh.db"
     command.upgrade(make_cfg(db, monkeypatch), "head")
     assert user_tables(db) == EXPECTED_TABLES

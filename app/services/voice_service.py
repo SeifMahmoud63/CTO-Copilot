@@ -2,7 +2,8 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import websockets
@@ -18,6 +19,21 @@ FORBIDDEN_SQL_PATTERN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|REPLACE|CREATE|GRANT|REVOKE|FLUSH|KILL|SET|LOCK)\b",
     re.IGNORECASE,
 )
+
+
+def _json_safe(value):
+    """Coerce one DB cell into something json.dumps accepts.
+
+    MySQL returns Decimal for SUM/AVG; without this the whole tool call
+    collapses into an error. Mirrored in chat_service.
+    """
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", errors="replace")
+    return value
 
 
 def parse_function_calls(event: Dict[str, Any]) -> List[Tuple[Optional[str], str, str]]:
@@ -87,16 +103,13 @@ class VoiceAgentService:
                 for row in rows[:30]:  # cap rows so audio response stays concise
                     row_dict = {}
                     for k, v in row.items():
-                        if isinstance(v, (datetime,)):
-                            row_dict[k] = v.isoformat()
-                        else:
-                            row_dict[k] = v
+                        row_dict[k] = _json_safe(v)
                     serializable_rows.append(row_dict)
 
                 return json.dumps(serializable_rows, ensure_ascii=False)
         except Exception as e:
-            logger.error(f"Voice Agent SQL execution error for '{clean_sql}': {e}")
-            return json.dumps({"error": str(e)})
+            logger.error(f"Voice Agent SQL execution error for '{clean_sql}': {e}", exc_info=True)
+            return json.dumps({"error": "Error"})
 
     def build_settings_payload(self) -> Dict[str, Any]:
         """Deepgram agent handshake configuration."""
@@ -180,9 +193,10 @@ class VoiceAgentService:
         await client_ws.accept()
 
         if not self.api_key:
+            logger.error("Voice session rejected: DEEPGRAM_API_KEY is not configured.")
             await client_ws.send_json({
                 "type": "error",
-                "message": "DEEPGRAM_API_KEY is not configured on the server.",
+                "message": "Error",
             })
             await client_ws.close(code=1008)
             return
@@ -274,9 +288,9 @@ class VoiceAgentService:
                     p.cancel()
 
         except Exception as e:
-            logger.error(f"Voice Agent session exception: {e}")
+            logger.error(f"Voice Agent session exception: {e}", exc_info=True)
             try:
-                await client_ws.send_json({"type": "error", "message": str(e)})
+                await client_ws.send_json({"type": "error", "message": "Error"})
             except Exception:
                 pass
         finally:

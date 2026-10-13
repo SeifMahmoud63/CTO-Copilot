@@ -21,6 +21,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cto-copilot")
 
+# Silence interpreter-shutdown noise from pooled DB connections outliving
+# their event loop (cosmetic "Exception ignored" tracebacks, never data loss).
+from app.db.session import install_loop_noise_filter as _install_noise_filter
+_install_noise_filter()
+
 app = FastAPI(
     title="CTO Copilot API",
     description="Automated GitHub PR monitoring, analysis, and AI summarization for CTO command centers.",
@@ -44,23 +49,36 @@ static_path = os.path.join(os.getcwd(), settings.static_dir)
 if os.path.exists(static_path):
     app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+    # HTML entry points must never be served stale: a cached index.html keeps
+    # pointing at old versioned assets (app.js?v=3) forever, so users never see
+    # new UI after a deploy no matter how often images are rebuilt.
+    NO_STORE_HTML = {"Cache-Control": "no-store, must-revalidate"}
+
     @app.get("/")
     async def serve_index():
-        return FileResponse(os.path.join(static_path, "index.html"))
+        return FileResponse(
+            os.path.join(static_path, "index.html"), headers=NO_STORE_HTML
+        )
 
     @app.get("/login")
     async def serve_login():
         login_path = os.path.join(static_path, "login.html")
         if os.path.exists(login_path):
-            return FileResponse(login_path)
-        return FileResponse(os.path.join(static_path, "index.html"))
+            return FileResponse(login_path, headers=NO_STORE_HTML)
+        return FileResponse(
+            os.path.join(static_path, "index.html"), headers=NO_STORE_HTML
+        )
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         file_path = os.path.join(static_path, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
+            if file_path.endswith(".html"):
+                return FileResponse(file_path, headers=NO_STORE_HTML)
             return FileResponse(file_path)
-        return FileResponse(os.path.join(static_path, "index.html"))
+        return FileResponse(
+            os.path.join(static_path, "index.html"), headers=NO_STORE_HTML
+        )
 
 async def auto_poll_prs():
     """Periodic GitHub poller for repository updates."""

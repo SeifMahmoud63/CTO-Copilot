@@ -61,12 +61,15 @@ async def auth_status():
 @router.post("/setup")
 async def auth_setup(payload: SetupRequest):
     """Start TOTP enrollment (password-gated, only before first enrollment)."""
+    import logging as _logging
     try:
         return await auth_service.begin_enrollment(payload.password)
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _logging.getLogger("cto-copilot.api").warning(f"Auth enrollment forbidden: {e}")
+        raise HTTPException(status_code=403, detail="Error")
+    except RuntimeError:
+        _logging.getLogger("cto-copilot.api").error("Auth enrollment failed.", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error")
 
 
 @router.post("/verify")

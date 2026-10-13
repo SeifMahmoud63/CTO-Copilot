@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const staleView = document.getElementById('staleView');
   const chatView = document.getElementById('chatView');
   const reportsView = document.getElementById('reportsView');
+  const emailsView = document.getElementById('emailsView');
+  const evalView = document.getElementById('evalView');
   const voiceView = document.getElementById('voiceView');
   const brandBtn = document.getElementById('brandBtn');
   const homeNavBtn = document.getElementById('homeNavBtn');
@@ -32,6 +34,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const drawerChatBtn = document.getElementById('drawerChatBtn');
   const drawerVoiceBtn = document.getElementById('drawerVoiceBtn');
   const drawerReportsBtn = document.getElementById('drawerReportsBtn');
+  const drawerEmailsBtn = document.getElementById('drawerEmailsBtn');
+  const drawerEmailsCount = document.getElementById('drawerEmailsCount');
+  const drawerEvalBtn = document.getElementById('drawerEvalBtn');
+
+  // Email triage view elements (declared up here: initial load calls loadEmails())
+  const emailsTableBody = document.getElementById('emailsTableBody');
+  const emailsEmptyState = document.getElementById('emailsEmptyState');
+  const syncEmailsBtn = document.getElementById('syncEmailsBtn');
   const drawerPrCount = document.getElementById('drawerPrCount');
   const drawerStaleCount = document.getElementById('drawerStaleCount');
 
@@ -64,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatSendBtn = document.getElementById('chatSendBtn');
 
   let allPRs = [];
+  let allEmails = [];
   let currentFilter = 'all';
   let currentDays = 30;
   let activeSessionId = null;
@@ -110,6 +121,16 @@ document.addEventListener('DOMContentLoaded', () => {
       label: 'Daily Reports',
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
       showCounter: false
+    },
+    emails: {
+      label: 'Emails',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>`,
+      showCounter: true
+    },
+    eval: {
+      label: 'Eval Lab',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4"/><path d="m17 16 4 4m0-4-4 4"/></svg>`,
+      showCounter: false
     }
   };
 
@@ -127,6 +148,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ).length;
         activeViewCounter.style.display = 'inline-block';
         activeViewCounter.textContent = staleCount;
+      } else if (currentActiveView === 'emails') {
+        activeViewCounter.style.display = 'inline-block';
+        activeViewCounter.textContent = (allEmails || []).length || '0';
       } else {
         activeViewCounter.style.display = 'none';
       }
@@ -147,6 +171,8 @@ document.addEventListener('DOMContentLoaded', () => {
     staleView?.classList.remove('active');
     chatView?.classList.remove('active');
     reportsView?.classList.remove('active');
+    emailsView?.classList.remove('active');
+    evalView?.classList.remove('active');
     voiceView?.classList.remove('active');
 
     drawerHomeBtn?.classList.remove('active');
@@ -156,6 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerChatBtn?.classList.remove('active');
     drawerVoiceBtn?.classList.remove('active');
     drawerReportsBtn?.classList.remove('active');
+    drawerEmailsBtn?.classList.remove('active');
+    drawerEvalBtn?.classList.remove('active');
 
     if (viewName === 'prs') {
       prsView?.classList.add('active');
@@ -173,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
       chatView?.classList.add('active');
       drawerChatBtn?.classList.add('active');
       loadChatSessions();
+      loadSSEConfig();
     } else if (viewName === 'voice') {
       voiceView?.classList.add('active');
       drawerVoiceBtn?.classList.add('active');
@@ -180,6 +209,14 @@ document.addEventListener('DOMContentLoaded', () => {
       reportsView?.classList.add('active');
       drawerReportsBtn?.classList.add('active');
       loadReports();
+    } else if (viewName === 'emails') {
+      emailsView?.classList.add('active');
+      drawerEmailsBtn?.classList.add('active');
+      loadEmails();
+    } else if (viewName === 'eval') {
+      evalView?.classList.add('active');
+      drawerEvalBtn?.classList.add('active');
+      loadEvalRecent();
     } else {
       homeView?.classList.add('active');
       drawerHomeBtn?.classList.add('active');
@@ -234,6 +271,16 @@ document.addEventListener('DOMContentLoaded', () => {
   drawerReportsBtn?.addEventListener('click', () => {
     closeDrawer();
     switchView('reports');
+  });
+
+  drawerEmailsBtn?.addEventListener('click', () => {
+    closeDrawer();
+    switchView('emails');
+  });
+
+  drawerEvalBtn?.addEventListener('click', () => {
+    closeDrawer();
+    switchView('eval');
   });
 
   // Drawer open / close
@@ -641,11 +688,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalOpened = days.reduce((s, d) => s + d.opened, 0);
     const totalMerged = days.reduce((s, d) => s + d.merged, 0);
     const hasData = totalOpened + totalMerged > 0;
-    if (homeChartEmpty) homeChartEmpty.style.display = hasData ? 'none' : 'block';
+    // Open PRs created BEFORE the 7-day window: invisible to the buckets above,
+    // but the user still has them — name them so the chart never looks dead-wrong.
+    const openBefore = (prs || []).filter((p) =>
+      (p.state || '').toLowerCase() === 'open'
+      && p.created_at && !days.some((d) => sameDay(p.created_at, d.date))
+    ).length;
+    const beforeNote = openBefore > 0
+      ? ` ${openBefore} PR${openBefore > 1 ? 's' : ''} still open from before.`
+      : '';
+    if (homeChartEmpty) {
+      homeChartEmpty.style.display = hasData ? 'none' : 'block';
+      if (!hasData && openBefore > 0) {
+        homeChartEmpty.textContent =
+          `No PRs opened or merged in the last 7 days —${beforeNote}`;
+      }
+    }
     if (homeChartFoot) {
       homeChartFoot.textContent = hasData
-        ? `${totalOpened} opened · ${totalMerged} merged in the last 7 days`
-        : 'No PR activity in the last 7 days.';
+        ? `${totalOpened} opened · ${totalMerged} merged in the last 7 days.${beforeNote ? ' ' + beforeNote.trim() : ''}`
+        : `No PRs opened or merged in the last 7 days.${beforeNote}`;
     }
     if (!hasData) return;
 
@@ -706,14 +768,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initial load
+  // Initial load (emails too, so the drawer count is live from the start)
   loadPullRequests();
   loadHome();
+  loadEmails();
 
   // Background poll for incoming PR activity
   setInterval(() => {
     loadPullRequests();
     loadHome();
+    loadEmails();
   }, 25000);
 
   // Chat
@@ -867,6 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const isUser = m.role === 'user';
       const avatar = isUser ? '👤' : '🤖';
       const rawContent = isUser ? escapeHtml(m.content) : renderMarkdown(m.content);
+      // Both sides: the user's own Arabic+code mixes jumble just the same.
       const formattedContent = isolateBidiRuns(rawContent);
       return `
         <div class="chat-bubble ${isUser ? 'user' : 'assistant'}">
@@ -894,6 +959,31 @@ document.addEventListener('DOMContentLoaded', () => {
     scrollChatToBottom();
 
     try {
+      if (sseStreamOn) {
+        await sendChatMessageStream(cleanText);
+      } else {
+        await sendChatMessagePlain(cleanText);
+      }
+    } finally {
+      if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
+      if (chatSendBtn) chatSendBtn.disabled = false;
+      scrollChatToBottom();
+    }
+  }
+
+  async function refreshChatSessionsList() {
+    const sessRes = await fetch(`${API_BASE}/api/chat/sessions`);
+    if (sessRes.ok) {
+      const sessData = await sessRes.json();
+      chatSessions = sessData.sessions || [];
+      renderSessionsList(chatSessions);
+      const curr = chatSessions.find(s => s.id === activeSessionId);
+      if (curr && activeChatTitle) activeChatTitle.textContent = curr.title;
+    }
+  }
+
+  async function sendChatMessagePlain(cleanText) {
+    try {
       const res = await fetch(`${API_BASE}/api/chat/sessions/${activeSessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -906,20 +996,84 @@ document.addEventListener('DOMContentLoaded', () => {
       scrollChatToBottom();
 
       // Refresh sessions to sync updated title
-      const sessRes = await fetch(`${API_BASE}/api/chat/sessions`);
-      if (sessRes.ok) {
-        const sessData = await sessRes.json();
-        chatSessions = sessData.sessions || [];
-        renderSessionsList(chatSessions);
-        const curr = chatSessions.find(s => s.id === activeSessionId);
-        if (curr && activeChatTitle) activeChatTitle.textContent = curr.title;
-      }
+      await refreshChatSessionsList();
     } catch (err) {
-      appendMessageBubble('assistant', `⚠️ Error: Could not get a response from the agent. (${err.message})`);
-    } finally {
-      if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
-      if (chatSendBtn) chatSendBtn.disabled = false;
+      console.warn('Chat reply failed:', err);
+      appendMessageBubble('assistant', 'Error');
+    }
+  }
+
+  // SSE path: tokens append live into one bubble; the terminal `done` event
+  // carries the judge-verified final text (replaces the live draft when the
+  // judge corrected or retried the first pass).
+  async function sendChatMessageStream(cleanText) {
+    if (!chatMessagesContainer) return;
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble assistant';
+    bubble.innerHTML = `
+      <div class="bubble-avatar">🤖</div>
+      <div class="bubble-content" dir="auto"></div>
+    `;
+    chatMessagesContainer.appendChild(bubble);
+    const contentEl = bubble.querySelector('.bubble-content');
+    scrollChatToBottom();
+
+    let raw = '';
+    let finalReply = null;
+    let firstToken = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sessions/${activeSessionId}/message/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: cleanText })
+      });
+      if (!res.ok || !res.body) throw new Error('Stream failed to open');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split('\n\n');
+        buf = frames.pop();
+        for (const fr of frames) {
+          const line = fr.trim();
+          if (!line.startsWith('data:')) continue;
+          let ev;
+          try {
+            ev = JSON.parse(line.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (ev.type === 'token') {
+            raw += ev.delta || '';
+            if (firstToken) {
+              firstToken = false;
+              if (chatTypingIndicator) chatTypingIndicator.style.display = 'none';
+            }
+            contentEl.innerHTML = isolateBidiRuns(escapeHtml(raw));
+            scrollChatToBottom();
+          } else if (ev.type === 'done') {
+            finalReply = ev.reply;
+          } else if (ev.type === 'error') {
+            throw new Error(ev.message || 'stream error');
+          }
+        }
+      }
+      const reply = (finalReply !== null && finalReply !== undefined) ? finalReply : raw;
+      contentEl.innerHTML = isolateBidiRuns(renderMarkdown(reply));
       scrollChatToBottom();
+      await refreshChatSessionsList();
+    } catch (err) {
+      console.warn('Chat stream failed:', err);
+      if (firstToken && !raw) {
+        bubble.remove();
+        appendMessageBubble('assistant', 'Error');
+      } else {
+        const reply = (finalReply !== null && finalReply !== undefined) ? finalReply : raw;
+        contentEl.innerHTML = isolateBidiRuns(renderMarkdown(reply || 'Error'));
+      }
     }
   }
 
@@ -1026,6 +1180,391 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Email triage view (below Daily Reports): inbox summaries + urgency scores
+  // (element consts live in the top block: initial load calls loadEmails())
+  function urgencyChip(tier) {
+    const t = tier || '';
+    if (t === 'Reply Now') return '<span class="metric-chip danger">Reply Now</span>';
+    if (t === 'Reply Today') return '<span class="metric-chip neutral">Reply Today</span>';
+    if (t === 'FYI / Soon') return '<span class="metric-chip positive">FYI / Soon</span>';
+    return `<span class="table-date-cell">${escapeHtml(t || '—')}</span>`;
+  }
+
+  function formatEmailDate(isoStr) {
+    if (!isoStr) return '—';
+    // Stored timestamps are naive UTC ("2026-10-12T06:07:00"): interpret as
+    // UTC and render in Africa/Cairo, so nobody does mental +2/+3 math.
+    const d = new Date(/([zZ]|[+-]\d{2}:?\d{2})$/.test(isoStr) ? isoStr : isoStr + 'Z');
+    if (Number.isNaN(d.getTime())) return escapeHtml(isoStr.slice(0, 16).replace('T', ' '));
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(d);
+      const get = (t) => (parts.find((p) => p.type === t) || {}).value || '';
+      return `${get('year')}-${get('month')}-${get('day')} • ${get('hour')}:${get('minute')}`;
+    } catch {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} • ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+
+  async function loadEmails() {
+    try {
+      const res = await fetch(`${API_BASE}/api/emails`);
+      if (!res.ok) throw new Error('Failed to load emails');
+      const data = await res.json();
+      allEmails = data.emails || [];
+      renderEmails(allEmails);
+    } catch (err) {
+      console.warn('Emails fetch error:', err);
+    }
+  }
+
+  function renderEmails(emails) {
+    if (drawerEmailsCount) drawerEmailsCount.textContent = (emails || []).length || '0';
+    if (!emails || emails.length === 0) {
+      if (emailsTableBody) emailsTableBody.innerHTML = '';
+      if (emailsEmptyState) emailsEmptyState.style.display = 'flex';
+      return;
+    }
+    if (emailsEmptyState) emailsEmptyState.style.display = 'none';
+    if (emailsTableBody) {
+      emailsTableBody.innerHTML = emails.map((m) => {
+        const score = (m.urgency_score ?? null) === null ? '—' : Number(m.urgency_score).toFixed(1);
+        return `
+        <tr>
+          <td><span class="table-pr-title" style="font-size: 0.85rem;">${escapeHtml(m.sender || 'unknown')}</span></td>
+          <td><span class="table-pr-title" style="font-size: 0.85rem;">${escapeHtml(m.subject || '(no subject)')}</span></td>
+          <td><span class="table-date-cell" style="white-space: nowrap;">${formatEmailDate(m.sent_at)}</span></td>
+          <td><span class="email-summary-cell">${escapeHtml(m.summary_text || m.snippet || '…')}</span></td>
+          <td><strong>${score}</strong></td>
+          <td>${urgencyChip(m.urgency_tier)}</td>
+          <td><button class="email-dismiss-btn" data-dismiss="${m.id}" title="Dismiss from list">✕</button></td>
+        </tr>
+      `;
+      }).join('');
+    }
+    updateActiveViewIndicator();
+  }
+
+  async function syncEmailsNow() {
+    try {
+      const res = await fetch(`${API_BASE}/api/emails/sync`, { method: 'POST' });
+      if (!res.ok) throw new Error('Inbox sync failed');
+      await loadEmails();
+    } catch (err) {
+      console.warn('Emails sync error:', err);
+    }
+  }
+
+  syncEmailsBtn?.addEventListener('click', () => {
+    syncEmailsBtn.classList.add('spinning');
+    syncEmailsNow().finally(() => {
+      syncEmailsBtn.classList.remove('spinning');
+    });
+  });
+
+  // Dismiss an email from the list (soft-hide; next polls won't resurrect it)
+  emailsTableBody?.addEventListener('click', async (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-dismiss]') : null;
+    if (!btn || btn.disabled) return;
+    const id = btn.getAttribute('data-dismiss');
+    if (!window.confirm('Dismiss this email from the list?')) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/emails/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Dismiss failed');
+      allEmails = (allEmails || []).filter((m) => String(m.id) !== String(id));
+      renderEmails(allEmails);
+    } catch (err) {
+      console.warn('Email dismiss error:', err);
+      btn.disabled = false;
+    }
+  });
+
+  // Eval Lab: queue a full torture run, poll status, show summary + history
+  const runEvalBtn = document.getElementById('runEvalBtn');
+  const evalJudgeToggle = document.getElementById('evalJudgeToggle');
+  const evalMaxQ = document.getElementById('evalMaxQ');
+  const evalStatusLine = document.getElementById('evalStatusLine');
+  const evalProgressWrap = document.getElementById('evalProgressWrap');
+  const evalProgressText = document.getElementById('evalProgressText');
+  const evalProgressPct = document.getElementById('evalProgressPct');
+  const evalProgressFill = document.getElementById('evalProgressFill');
+  const evalSummaryGrid = document.getElementById('evalSummaryGrid');
+  const evalRunsTableBody = document.getElementById('evalRunsTableBody');
+  const evalRunsEmptyState = document.getElementById('evalRunsEmptyState');
+  const evalSSEToggle = document.getElementById('evalSSEToggle');
+  const evalSSEState = document.getElementById('evalSSEState');
+  let evalPollTimer = null;
+  // Live in-progress run shown as the first table row (real rows land in MLflow on completion).
+  let evalRunning = null;
+  let evalLastRuns = [];
+  // Cached SSE flag: Eval Lab toggle writes it, Chatbot read it for live streaming.
+  let sseStreamOn = false;
+
+  function renderEvalSummary(result) {
+    if (!evalSummaryGrid) return;
+    if (!result || typeof result !== 'object') {
+      evalSummaryGrid.style.display = 'none';
+      return;
+    }
+    const pct = (v) => (v === null || v === undefined) ? '—' : `${Math.round(v * 100)}%`;
+    const secs = (v) => (v === null || v === undefined) ? '—' : `${v}s`;
+    // SSE decision rule: TTFT ≈ latency -> streaming hides almost nothing.
+    const gap = (result.avg_latency_s != null && result.avg_ttft_s != null)
+      ? Math.max(0, Math.round((result.avg_latency_s - result.avg_ttft_s) * 100) / 100)
+      : null;
+    const ttftFoot = gap === null
+      ? 'TTFT not recorded (older run)'
+      : (gap < 1 ? `gap ${gap}s — SSE barely helps` : `gap ${gap}s — SSE would help`);
+    const cards = [
+      ['Questions', result.question_count ?? '—', `Fixtures ${result.fixture_count ?? '—'}`],
+      ['✅ Correct', pct(result.pass_rate), `Fail ${pct(result.fail_rate)} · Safe ${pct(result.safe_rate)}`],
+      ['🔥 Hallucination', pct(result.fail_fabrication_rate), `Quality fails ${pct(result.fail_quality_rate)} (grounded, not invented)`],
+      ['Faithfulness', pct(result.faithfulness_avg), 'Minimax judge vs observations'],
+      ['Avg latency', secs(result.avg_latency_s), `p95 ${result.p95_latency_s ?? '—'}s`],
+      ['Avg TTFT', secs(result.avg_ttft_s), ttftFoot],
+    ];
+    evalSummaryGrid.style.display = 'grid';
+    evalSummaryGrid.innerHTML = cards.map(([label, value, foot]) => `
+      <div class="metric-card">
+        <div class="metric-top"><span class="metric-label">${label}</span></div>
+        <div class="metric-value" style="font-size: 1.6rem;">${value}</div>
+        <div class="metric-foot">${foot}</div>
+      </div>
+    `).join('');
+  }
+
+  async function loadEvalRecent() {
+    try {
+      const res = await fetch(`${API_BASE}/api/eval/recent?limit=10`);
+      if (!res.ok) throw new Error('Failed to load eval runs');
+      const data = await res.json();
+      renderEvalRecent(data.runs || []);
+    } catch (err) {
+      console.warn('Eval recent fetch error:', err);
+    }
+    loadSSEConfig();
+  }
+
+  // SSE streaming toggle (Eval Lab button -> runtime flag -> Chatbot streams).
+  async function loadSSEConfig() {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sse`);
+      if (!res.ok) throw new Error('SSE config failed');
+      const data = await res.json();
+      sseStreamOn = !!data.enabled;
+      if (evalSSEToggle) evalSSEToggle.checked = sseStreamOn;
+      if (evalSSEState) evalSSEState.textContent = sseStreamOn ? 'ON' : 'OFF';
+    } catch (err) {
+      console.warn('SSE config fetch error:', err);
+    }
+  }
+
+  evalSSEToggle?.addEventListener('change', async () => {
+    const want = !!(evalSSEToggle && evalSSEToggle.checked);
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/sse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: want })
+      });
+      if (!res.ok) throw new Error('SSE toggle failed');
+      const data = await res.json();
+      sseStreamOn = !!data.enabled;
+      if (evalSSEToggle) evalSSEToggle.checked = sseStreamOn;
+      if (evalSSEState) evalSSEState.textContent = sseStreamOn ? 'ON' : 'OFF';
+      if (evalStatusLine) evalStatusLine.textContent = sseStreamOn
+        ? 'SSE ON — Chatbot now streams first tokens live (judge gate still applies).'
+        : 'SSE OFF — Chatbot waits for the full reply again.';
+    } catch (err) {
+      console.warn('SSE toggle error:', err);
+      if (evalSSEToggle) evalSSEToggle.checked = sseStreamOn;
+      if (evalStatusLine) evalStatusLine.textContent = 'Error';
+    }
+  });
+
+  function evalRunningRowHtml() {
+    if (!evalRunning) return '';
+    const cur = evalRunning.current || 0;
+    const tot = evalRunning.total || 0;
+    const qs = tot > 0 ? `${cur} من ${tot}` : '…';
+    return `
+        <tr id="evalRunningRow" style="background: rgba(29,78,216,0.06);">
+          <td><span class="table-pr-title" style="font-size: 0.82rem;">eval-running</span><br><span class="table-date-cell">${escapeHtml(String(evalRunning.taskId || '').slice(0, 8))}</span></td>
+          <td><span class="metric-chip neutral">● ${escapeHtml(evalRunning.status || 'RUNNING')}</span></td>
+          <td><strong>${escapeHtml(qs)}</strong></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="table-date-cell">${evalRunning.sse ? 'ON' : 'OFF'}</span></td>
+          <td><span class="table-date-cell">${evalRunning.useJudge === false ? 'OFF' : 'ON'}</span></td>
+          <td></td>
+        </tr>
+      `;
+  }
+
+  function renderEvalRecent(runs) {
+    evalLastRuns = runs || [];
+    const live = evalRunningRowHtml();
+    if (evalLastRuns.length === 0 && !live) {
+      if (evalRunsTableBody) evalRunsTableBody.innerHTML = '';
+      if (evalRunsEmptyState) evalRunsEmptyState.style.display = 'flex';
+      return;
+    }
+    if (evalRunsEmptyState) evalRunsEmptyState.style.display = 'none';
+    if (evalRunsTableBody) {
+      evalRunsTableBody.innerHTML = live + evalLastRuns.map((r) => {
+        const m = r.metrics || {};
+        const p = r.params || {};
+        const pct = (v) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : `${Math.round(v * 100)}%`;
+        const secs = (v) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : `${v}s`;
+        const qs = (m.question_count === null || m.question_count === undefined || Number.isNaN(m.question_count)) ? '—' : Math.round(m.question_count);
+        const sseRaw = p.sse_enabled;
+        const sse = (sseRaw === undefined || sseRaw === null || sseRaw === '')
+          ? '—' : (sseRaw === true || sseRaw === 'True' || sseRaw === 'true' ? 'ON' : 'OFF');
+        return `
+        <tr>
+          <td><span class="table-pr-title" style="font-size: 0.82rem;">${escapeHtml((r.run_name || r.run_id || '').slice(0, 40))}</span><br><span class="table-date-cell">${escapeHtml(String(r.run_id || '').slice(0, 8))}</span></td>
+          <td><span class="metric-chip ${r.status === 'FINISHED' ? 'positive' : (r.status === 'FAILED' ? 'danger' : 'neutral')}">${escapeHtml(r.status || '?')}</span></td>
+          <td><strong>${qs}</strong></td>
+          <td title="Share of replies that were exactly right"><strong>${pct(m.pass_rate)}</strong></td>
+          <td title="True hallucination: failed AND ungrounded"><strong style="color: ${m.fail_fabrication_rate > 0.1 ? '#dc2626' : 'inherit'};">${pct(m.fail_fabrication_rate)}</strong></td>
+          <td><strong>${pct(m.faithfulness_avg)}</strong></td>
+          <td>${secs(m.avg_latency_s)}</td>
+          <td title="95th percentile latency">${secs(m.p95_latency_s)}</td>
+          <td title="Mean time-to-first-token">${secs(m.avg_ttft_s)}</td>
+          <td><span class="table-date-cell">${sse}</span></td>
+          <td><span class="table-date-cell">${escapeHtml(p.use_judge === 'False' || p.use_judge === false ? 'OFF' : 'ON')}</span></td>
+          <td><button class="email-dismiss-btn" data-eval-del="${escapeHtml(r.run_id || '')}" title="Delete this run">✕</button></td>
+        </tr>
+      `;
+      }).join('');
+    }
+  }
+
+  function renderEvalProgress(current, total) {
+    if (!evalProgressWrap) return;
+    if (!total || total <= 0) {
+      evalProgressWrap.style.display = 'none';
+      return;
+    }
+    evalProgressWrap.style.display = 'block';
+    const pct = Math.min(100, Math.round((current / total) * 100));
+    if (evalProgressText) evalProgressText.textContent = `${current} من ${total}`;
+    if (evalProgressPct) evalProgressPct.textContent = `${pct}%`;
+    if (evalProgressFill) evalProgressFill.style.width = `${pct}%`;
+  }
+
+  function hideEvalProgress() {
+    if (evalProgressWrap) evalProgressWrap.style.display = 'none';
+  }
+
+  async function pollEvalTask(taskId) {
+    try {
+      const res = await fetch(`${API_BASE}/api/eval/runs/${taskId}`);
+      if (!res.ok) throw new Error('Eval status failed');
+      const data = await res.json();
+      // Live X-of-Y alongside the Celery status (progress lives in Redis).
+      let cur = 0, tot = 0;
+      try {
+        const pres = await fetch(`${API_BASE}/api/eval/progress/${taskId}`);
+        if (pres.ok) {
+          const pdata = await pres.json();
+          cur = pdata.current || 0; tot = pdata.total || 0;
+          renderEvalProgress(cur, tot);
+        }
+      } catch (e) { /* progress is best-effort */ }
+      if (data.status === 'SUCCESS') {
+        if (evalPollTimer) { clearInterval(evalPollTimer); evalPollTimer = null; }
+        evalRunning = null;
+        if (evalStatusLine) evalStatusLine.textContent = 'Done — summary below, full per-question table in MLflow.';
+        hideEvalProgress();
+        renderEvalSummary(data.result || null);
+        loadEvalRecent();
+        if (runEvalBtn) { runEvalBtn.classList.remove('spinning'); runEvalBtn.disabled = false; }
+      } else if (data.status === 'FAILURE') {
+        if (evalPollTimer) { clearInterval(evalPollTimer); evalPollTimer = null; }
+        evalRunning = null;
+        console.warn('Eval run failed:', data.result);
+        if (evalStatusLine) evalStatusLine.textContent = 'Error';
+        hideEvalProgress();
+        renderEvalRecent(evalLastRuns);
+        if (runEvalBtn) { runEvalBtn.classList.remove('spinning'); runEvalBtn.disabled = false; }
+      } else {
+        if (evalStatusLine) evalStatusLine.textContent = `Running… (${data.status}) — you can leave this page, results land in MLflow.`;
+        if (evalRunning && evalRunning.taskId === taskId) {
+          evalRunning.status = data.status || 'RUNNING';
+          evalRunning.current = cur; evalRunning.total = tot;
+        } else {
+          evalRunning = { taskId, status: data.status || 'RUNNING', current: cur, total: tot };
+        }
+        renderEvalRecent(evalLastRuns);
+      }
+    } catch (err) {
+      console.warn('Eval poll error:', err);
+    }
+  }
+
+  runEvalBtn?.addEventListener('click', async () => {
+    if (evalPollTimer) { clearInterval(evalPollTimer); evalPollTimer = null; }
+    const payload = { use_judge: evalJudgeToggle ? evalJudgeToggle.checked : true,
+      sse_enabled: !!(evalSSEToggle && evalSSEToggle.checked) };
+    const maxQ = evalMaxQ && evalMaxQ.value ? parseInt(evalMaxQ.value, 10) : null;
+    if (maxQ && maxQ > 0) payload.max_questions = maxQ;
+    runEvalBtn.disabled = true;
+    runEvalBtn.classList.add('spinning');
+    if (evalStatusLine) evalStatusLine.textContent = 'Queued…';
+    renderEvalSummary(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/eval/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Eval queue failed');
+      const data = await res.json();
+      if (evalStatusLine) evalStatusLine.textContent = `Queued (${data.task_id.slice(0, 8)}…) — polling status.`;
+      // Show the new test in the table immediately (live row until it lands in MLflow).
+      evalRunning = {
+        taskId: data.task_id, status: 'QUEUED', current: 0, total: 0,
+        useJudge: !!payload.use_judge,
+        sse: !!(evalSSEToggle && evalSSEToggle.checked),
+      };
+      renderEvalRecent(evalLastRuns);
+      evalPollTimer = setInterval(() => pollEvalTask(data.task_id), 4000);
+      pollEvalTask(data.task_id);
+    } catch (err) {
+      console.warn('Eval run error:', err);
+      if (evalStatusLine) evalStatusLine.textContent = 'Error';
+      runEvalBtn.disabled = false;
+      runEvalBtn.classList.remove('spinning');
+    }
+  });
+
+  // Delete an Eval Lab run (soft-delete in MLflow, disappears from lists)
+  const evalRunsTable = document.getElementById('evalRunsTableBody');
+  evalRunsTable?.addEventListener('click', async (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-eval-del]') : null;
+    if (!btn || btn.disabled) return;
+    const runId = btn.getAttribute('data-eval-del');
+    if (!runId || !window.confirm('Delete this eval run from MLflow?')) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/eval/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      loadEvalRecent();
+    } catch (err) {
+      console.warn('Eval delete error:', err);
+      btn.disabled = false;
+    }
+  });
+
   btnNewChat?.addEventListener('click', () => {
     createNewChatSession();
   });
@@ -1052,8 +1591,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Italic
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    // Markdown tables
-    const tableRegex = /((?:\|[^\n]+\|\r?\n)+)/g;
+    // Markdown tables (last row may end at string end without a newline)
+    const tableRegex = /((?:\|[^\n]+\|(?:\r?\n|$))+)/g;
     html = html.replace(tableRegex, (match) => {
       const rows = match.trim().split(/\r?\n/).map(r => r.trim());
       if (rows.length < 2) return match;
@@ -1085,9 +1624,18 @@ document.addEventListener('DOMContentLoaded', () => {
       return tableHtml;
     });
 
-    // Paragraphs & line breaks
+    // Paragraphs, lists & line breaks
     html = html.split(/\n\n+/).map(p => {
       if (p.startsWith('<pre>') || p.startsWith('<table>')) return p;
+      const lines = p.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+      // Whole block is a list: every line starts with -/*/• or N.)/N.
+      if (lines.length > 0 && lines.every(l => /^(?:[-*•]|\d+[.)])\s+/.test(l))) {
+        const ordered = /^\d/.test(lines[0]);
+        const tag = ordered ? 'ol' : 'ul';
+        return `<${tag}>` + lines.map(l =>
+          `<li>${l.replace(/^(?:[-*•]|\d+[.)])\s+/, '')}</li>`
+        ).join('') + `</${tag}>`;
+      }
       return `<p>${p.replace(/\n/g, '<br/>')}</p>`;
     }).join('');
 
@@ -1108,12 +1656,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const RTL_RE = /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/;
   function hasRtl(text) { return RTL_RE.test(text || ''); }
 
-  // Wrap Latin tokens in <bdi> to preserve punctuation and order inside RTL blocks
+  // Wrap Latin tokens in <bdi> to preserve punctuation and order inside RTL blocks.
+  // A run = Latin words joined by single spaces ("PR #5", full titles) so the
+  // whole chunk keeps its internal order instead of flipping piece by piece.
   function isolateBidiRuns(html) {
     if (!html || !hasRtl(html)) return html;
     const parts = html.split(/(<[^>]+>)/g);
     const entityRe = /(&[a-zA-Z0-9#]+;)/g;
-    const runRe = /https?:\/\/[^\s<]+|#?[A-Za-z0-9_][A-Za-z0-9_.:/#+-]*/g;
+    const word = /#?[A-Za-z0-9_][A-Za-z0-9_.:/#+@-]*/;
+    const runRe = new RegExp(
+      'https?://[^\\s<]+|' + word.source + '(?: +' + word.source + ')*', 'g'
+    );
     return parts.map((seg) => {
       if (!seg || seg.startsWith('<')) return seg;
       return seg.split(entityRe).map((chunk) => {
@@ -1326,7 +1879,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (msg.type === 'AgentStartedSpeaking') {
               setVoiceVisualState('speaking');
             } else if (msg.type === 'Error' || msg.type === 'error') {
-              appendVoiceTranscript('system', `Error: ${msg.description || msg.message}`);
+              console.warn('Voice agent error:', msg.description || msg.message);
+              appendVoiceTranscript('system', 'Error');
               stopVoiceSession();
             }
           } catch (e) {
@@ -1364,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', () => {
       micProcessorNode.connect(recordAudioCtx.destination);
     } catch (err) {
       console.error('Could not start voice session:', err);
-      alert('Microphone access failed or Voice Agent error: ' + (err.message || err));
+      alert('Error');
       stopVoiceSession();
     }
   }
@@ -1421,6 +1975,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (e) {}
       voiceWs = null;
+    }
+
+    // Clear the conversation transcript when the call ends (saves space).
+    if (voiceTranscriptBox) {
+      voiceTranscriptBox.innerHTML = '';
+      const placeholder = document.createElement('div');
+      placeholder.className = 'voice-msg-row';
+      placeholder.setAttribute(
+        'style', 'color: var(--text-muted); font-style: italic;'
+      );
+      placeholder.textContent =
+        'Click "Start Voice Call" to begin speaking with CTO Copilot...';
+      voiceTranscriptBox.appendChild(placeholder);
+      voiceTranscriptBox.scrollTop = 0;
     }
   }
 

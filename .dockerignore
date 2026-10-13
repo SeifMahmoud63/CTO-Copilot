@@ -54,3 +54,24 @@ Thumbs.db
 
 # Docs (not needed at runtime)
 README.md
+docs/
+*.md
+
+# Local data, test suites & generated artifacts
+tests/
+mlruns/
+reports/
+mysql/
+scripts/torture_chat.py
+*.pdf
+.cache/
+
+# Media & videos (never bake videos into image)
+video/
+videos/
+vidoe/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm

@@ -141,8 +141,13 @@ class GitHubService:
                 logger.error(f"Failed to fetch pull requests: {e}")
                 return []
 
+    # Cap well above the old 3.5k starvation limit: ~25k tokens fits any sane
+    # model context, while a truly monstrous diff would blow the 30s LLM
+    # timeout and fail the summary entirely (worse than a flagged truncation).
+    DIFF_MAX_CHARS = 100_000
+
     async def fetch_pr_diff(self, pr_number: int) -> tuple[str, bool]:
-        """Fetch diff content for a pull request."""
+        """Fetch diff content for a pull request (near-full, flagged if cut)."""
         diff_url = f"{self.repo_url}/pulls/{pr_number}"
         diff_headers = {**self.headers, "Accept": "application/vnd.github.v3.diff"}
         async with httpx.AsyncClient() as client:
@@ -150,8 +155,8 @@ class GitHubService:
                 res = await client.get(diff_url, headers=diff_headers, timeout=20.0)
                 if res.status_code == 200:
                     diff_text = res.text
-                    is_truncated = len(diff_text) > 3500
-                    excerpt = diff_text[:3500] if is_truncated else diff_text
+                    is_truncated = len(diff_text) > self.DIFF_MAX_CHARS
+                    excerpt = diff_text[:self.DIFF_MAX_CHARS] if is_truncated else diff_text
                     return excerpt, is_truncated
                 return "Diff not available.", False
             except Exception as e:
@@ -278,7 +283,7 @@ class GitHubService:
         summary_text, provider, model_used = llm_service.generate_pr_summary(prompt)
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        impact_score = await jev_service.evaluate_impact(summary_text)
+        impact_score = await jev_service.evaluate_impact(summary_text, diff_content)
 
         self.summary_cache[pr_id] = {
             "summary": summary_text,

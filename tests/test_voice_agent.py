@@ -107,7 +107,8 @@ def test_missing_api_key_rejected_cleanly():
     client = FakeClientWs()
     run(service.handle_client_session(client))
     assert client.sent_json and client.sent_json[0]["type"] == "error"
-    assert "DEEPGRAM_API_KEY" in client.sent_json[0]["message"]
+    # Internal details stay in logs; the site sees "Error" only.
+    assert client.sent_json[0]["message"] == "Error"
     assert client.closed == 1008
 
 

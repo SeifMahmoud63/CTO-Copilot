@@ -162,3 +162,61 @@ def test_force_refresh_skips_hydration(monkeypatch):
     assert item is not None
     assert item.summary == "Refreshed summary."
     get_stored.assert_not_called()
+
+
+def _patch_diff(monkeypatch, body, status=200):
+    class FakeResp:
+        status_code = status
+
+        def __init__(self):
+            self.text = body
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **k):
+            return FakeResp()
+
+    monkeypatch.setattr(gh_mod.httpx, "AsyncClient", FakeClient)
+
+
+def test_fetch_pr_diff_no_starvation_on_normal_prs(monkeypatch):
+    svc = GitHubService()
+    body = "diff --git a/f.py b/f.py\n" + "+some changed line of code here\n" * 500
+    assert len(body) > 3500  # would have been cut by the old cap
+    _patch_diff(monkeypatch, body)
+    excerpt, truncated = run(svc.fetch_pr_diff(9))
+    assert truncated is False
+    assert excerpt == body
+
+
+def test_fetch_pr_diff_still_flags_monster_diffs(monkeypatch):
+    svc = GitHubService()
+    body = "x" * (GitHubService.DIFF_MAX_CHARS + 10)
+    _patch_diff(monkeypatch, body)
+    excerpt, truncated = run(svc.fetch_pr_diff(9))
+    assert truncated is True
+    assert len(excerpt) == GitHubService.DIFF_MAX_CHARS
+
+
+def test_jev_scores_from_diff_plus_summary(monkeypatch):
+    from app.services import jev_service as jev_module
+
+    seen = {}
+    long_diff = "diff --git a/auth.py b/auth.py\n+def login(): pass\n" * 200
+
+    async def fake_post(self, state_text, question_key, instructions, criteria):
+        seen["state"] = state_text
+        seen["key"] = question_key
+        return 9.0
+
+    monkeypatch.setattr(jev_module.JevService, "_post_score", fake_post)
+    score = run(jev_module.jev_service.evaluate_impact("Auth rework summary.", long_diff))
+    assert score == 9.0
+    assert "Auth rework summary." in seen["state"]
+    assert "def login" in seen["state"]  # diff rides along, not summary-only
+    assert seen["key"] == "impact_score"

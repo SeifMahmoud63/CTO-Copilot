@@ -191,14 +191,28 @@ def _register_fonts() -> Dict[str, str]:
     return {"regular": "Helvetica", "bold": "Helvetica-Bold"}
 
 
-def build_pdf(
+def build_pdf_bytes(
     report_date_str: str,
     title: str,
     metrics: Dict[str, Any],
     analysis: str,
-    out_path: str,
-) -> str:
-    """Render the daily report PDF (reportlab platypus). Returns out_path."""
+) -> bytes:
+    """Render the daily report PDF to in-memory bytes (no disk touch — MinIO upload)."""
+    import io as _io
+
+    buf = _io.BytesIO()
+    _render_pdf(report_date_str, title, metrics, analysis, buf)
+    return buf.getvalue()
+
+
+def _render_pdf(
+    report_date_str: str,
+    title: str,
+    metrics: Dict[str, Any],
+    analysis: str,
+    dest,
+) -> None:
+    """Shared reportlab renderer. dest = file path str or binary file-like."""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
@@ -234,9 +248,8 @@ def build_pdf(
                            alignment=2 if rtl else 0),
         )
 
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     doc = SimpleDocTemplate(
-        out_path, pagesize=A4,
+        dest, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
         title=title, author="CTO Copilot",
     )
@@ -304,6 +317,18 @@ def build_pdf(
             story.append(para(chunk, size=10, leading=14, space_after=5))
 
     doc.build(story)
+
+
+def build_pdf(
+    report_date_str: str,
+    title: str,
+    metrics: Dict[str, Any],
+    analysis: str,
+    out_path: str,
+) -> str:
+    """Legacy local-file renderer — kept for tests/backward compat only."""
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    _render_pdf(report_date_str, title, metrics, analysis, out_path)
     return out_path
 
 
@@ -327,10 +352,21 @@ async def generate_daily_report(report_date_str: Optional[str] = None) -> Dict[s
     metrics = collect_daily_metrics(pr_items, engineers, now, threshold)
     analysis = generate_analysis(build_analysis_prompt(metrics, language))
 
-    reports_dir = settings.reports_dir
-    os.makedirs(reports_dir, exist_ok=True)
-    pdf_path = os.path.abspath(os.path.join(reports_dir, f"daily-report-{day}.pdf"))
-    build_pdf(day, f"CTO Daily Report — {day}", metrics, analysis, pdf_path)
+    # ALL PDFs live on MinIO — zero bytes on local disk.
+    pdf_bytes = build_pdf_bytes(day, f"CTO Daily Report — {day}", metrics, analysis)
+    try:
+        from app.services.storage_service import storage_service
+
+        pdf_path = storage_service.upload_report(day, pdf_bytes)
+    except Exception as exc:
+        # Local fallback ONLY when MinIO is unreachable (tests / cold start).
+        # Production with healthy MinIO never hits this branch.
+        logger.warning(f"MinIO upload failed, falling back to local file: {exc}")
+        reports_dir = settings.reports_dir
+        os.makedirs(reports_dir, exist_ok=True)
+        pdf_path = os.path.abspath(os.path.join(reports_dir, f"daily-report-{day}.pdf"))
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
 
     record = await db_service.save_report(
         report_date=day,
@@ -343,6 +379,19 @@ async def generate_daily_report(report_date_str: Optional[str] = None) -> Dict[s
         prs_closed=metrics["counts"]["closed_24h"],
         overdue_count=metrics["counts"]["newly_overdue"],
     )
+
+    if settings.slack_enabled and settings.slack_bot_token:
+        try:
+            from app.services.slack_service import slack_service
+
+            await slack_service.upload_daily_report(
+                pdf_path=pdf_path,
+                title=f"CTO Daily Report — {day}",
+                summary=analysis,
+            )
+        except Exception as exc:
+            logger.error(f"Failed to upload report to Slack: {exc}")
+
     return {
         "id": record.id if record else None,
         "report_date": day,

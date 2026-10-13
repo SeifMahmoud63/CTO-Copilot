@@ -1252,6 +1252,41 @@ body {
   white-space: nowrap;
 }
 
+/* Email summaries wrap vertically instead of truncating horizontally */
+.email-summary-cell {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Email dismiss button (subtle until hovered) */
+.email-dismiss-btn {
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.email-dismiss-btn:hover:not(:disabled) {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.email-dismiss-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .table-empty-state {
   display: none;
   flex-direction: column;
@@ -1880,8 +1915,11 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Isolated LTR runs (usernames, URLs, PR refs) inside mixed-direction text */
+/* Isolated LTR runs (usernames, URLs, PR refs) inside mixed-direction text.
+   direction:ltr is required: tokens like "#5" have no strong Latin letter,
+   so without it they inherit the RTL paragraph direction and flip to "5#". */
 .bubble-content bdi {
+  direction: ltr;
   unicode-bidi: isolate;
 }
 
@@ -1921,6 +1959,21 @@ body {
 }
 
 .bubble-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Assistant lists (rendered from - / * / N. lines) */
+.bubble-content ul,
+.bubble-content ol {
+  margin: 4px 0 10px 0;
+  padding-inline-start: 22px;
+}
+
+.bubble-content li {
+  margin: 3px 0;
+}
+
+.bubble-content li:last-child {
   margin-bottom: 0;
 }
 

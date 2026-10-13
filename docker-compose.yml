@@ -3,7 +3,11 @@ services:
     image: mysql:8.0
     container_name: cto-copilot-mysql
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # NOTE: --skip-log-bin is required: MLflow's schema migrations create triggers,
+    # and MySQL 8 refuses CREATE TRIGGER for non-SUPER users while binlog is on
+    # (ERROR 1419), which wedges MLflow upgrades in a crash loop. This is a
+    # standalone app DB (no replication), so binlog serves no purpose.
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-log-bin
     environment:
       MYSQL_ROOT_PASSWORD: cto_root_password_2026
       MYSQL_ROOT_HOST: '%'
@@ -14,6 +18,7 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "cto_user", "-pcto_password_2026"]
       interval: 10s
@@ -34,6 +39,54 @@ services:
       timeout: 5s
       retries: 5
 
+  # S3-compatible object storage with MinIO & MinIO Console Web UI.
+  # S3 API: http://localhost:9000 (and 9090)
+  # Console UI: http://localhost:9001
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: cto-copilot-minio
+    restart: unless-stopped
+    command: server /data --address "0.0.0.0:9000" --console-address "0.0.0.0:9001"
+    environment:
+      - MINIO_ROOT_USER=cto-minio-admin
+      - MINIO_ROOT_PASSWORD=X7k9-Q2mZ-vN4p-L8wR-5tY6-uI3-CTO-2026!#
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Bucket creation on the already-built app image (python + boto3 already
+  # inside) — needs no extra image pulls. App/worker/beat wait for it.
+  storage-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cto-copilot-storage-init
+    command: python scripts/ensure_buckets.py
+    env_file:
+      - .env
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=cto-minio-admin
+      - MINIO_SECRET_KEY=X7k9-Q2mZ-vN4p-L8wR-5tY6-uI3-CTO-2026!#
+      - MINIO_BUCKET_REPORTS=cto-reports
+      - MINIO_BUCKET_MLFLOW=mlflow-artifacts
+      - MINIO_BUCKET_PROGRESS=eval-progress
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+
   cto-copilot:
     build:
       context: .
@@ -51,6 +104,13 @@ services:
       - MYSQL_USER=cto_user
       - MYSQL_PASSWORD=cto_password_2026
       - MYSQL_DATABASE=cto_copilot_db
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=cto-minio-admin
+      - MINIO_SECRET_KEY=X7k9-Q2mZ-vN4p-L8wR-5tY6-uI3-CTO-2026!#
+      - MINIO_BUCKET_REPORTS=cto-reports
+      - MINIO_BUCKET_MLFLOW=mlflow-artifacts
+      - MINIO_BUCKET_PROGRESS=eval-progress
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     volumes:
       - ./app:/app/app
       - ./web:/app/web
@@ -61,6 +121,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
@@ -80,6 +142,13 @@ services:
       - MYSQL_PORT=3306
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=cto-minio-admin
+      - MINIO_SECRET_KEY=X7k9-Q2mZ-vN4p-L8wR-5tY6-uI3-CTO-2026!#
+      - MINIO_BUCKET_REPORTS=cto-reports
+      - MINIO_BUCKET_MLFLOW=mlflow-artifacts
+      - MINIO_BUCKET_PROGRESS=eval-progress
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     volumes:
       - ./app:/app/app
       - ./reports:/app/reports
@@ -89,6 +158,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
 
   cto-beat:
     build:
@@ -106,16 +177,25 @@ services:
       - REPORT_TIMEZONE=Africa/Cairo
       - REPORT_HOUR=8
       - REPORT_MINUTE=0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=cto-minio-admin
+      - MINIO_SECRET_KEY=X7k9-Q2mZ-vN4p-L8wR-5tY6-uI3-CTO-2026!#
+      - MINIO_BUCKET_REPORTS=cto-reports
+      - MINIO_BUCKET_MLFLOW=mlflow-artifacts
+      - MINIO_BUCKET_PROGRESS=eval-progress
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     volumes:
       - ./app:/app/app
-      - ./reports:/app/reports
     restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
 
 volumes:
   mysql_data:
   redis_data:
+  minio_data:

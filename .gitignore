@@ -47,15 +47,30 @@ htmlcov/
 *.log
 logs/
 
-# Local generated reports (daily PDFs live here, never commit them)
+# Legacy local dirs (pre-MinIO migration leftovers — production writes nothing here).
+# All files now live on MinIO (cto-reports / mlflow-artifacts / eval-progress buckets).
 reports/
 *.pdf
+
+# Legacy MLflow file backend (prod uses MySQL tracking + MinIO artifacts now)
+mlruns/
 
 # Local database dumps (never commit data)
 *.sql
 *.dump
 *.sqlite3
 *.db
+
+# Demo / promo videos (local only — never push to GitHub)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+video/
+videos/
+vidoe/
+cto-watch-demo.mp4
 
 # IDEs & OS
 .idea/

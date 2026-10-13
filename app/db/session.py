@@ -25,6 +25,77 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
+async def dispose_engine() -> None:
+    """Drop all pooled DB connections.
+
+    REQUIRED at Celery task boundaries: the worker is prefork (engine + pool
+    are inherited at import), while every task runs its own ``asyncio.run()``
+    event loop. Pooled aiomysql connections stay bound to dead loops, so the
+    next task's first checkout crashes with "Future attached to a different
+    loop". Disposing forces a fresh pool on the current loop. Harmless
+    everywhere else (fresh processes, tests).
+    """
+    try:
+        await engine.dispose()
+    except Exception as e:
+        logger.debug(f"Engine dispose skipped: {e}")
+
+
+def is_loop_teardown_noise(exc_value: BaseException, obj=None) -> bool:
+    """True only for aiomysql/SQLAlchemy close-after-loop-death noise.
+
+    Matches ALL of: a RuntimeError saying exactly "Event loop is closed",
+    raised from aiomysql/sqlalchemy teardown frames (Connection.__del__,
+    ensure_closed, pool _close_connection). Anything else — including the
+    same message from our own code paths — returns False and stays loud.
+    """
+    if not isinstance(exc_value, RuntimeError):
+        return False
+    if "Event loop is closed" not in str(exc_value):
+        return False
+    parts = []
+    if obj is not None:
+        parts.append(type(obj).__module__ or "")
+        parts.append(type(obj).__qualname__ or "")
+    tb = getattr(exc_value, "__traceback__", None)
+    while tb is not None:
+        parts.append(tb.tb_frame.f_code.co_filename or "")
+        tb = tb.tb_next
+    blob = "\n".join(parts)
+    return ("aiomysql" in blob) or ("sqlalchemy" in blob)
+
+
+_installed_noise_filter = False
+
+
+def install_loop_noise_filter() -> None:
+    """Route DB-teardown interpreter noise to /dev/null (idempotent).
+
+    Python prints "Exception ignored in ..." via sys.unraisablehook when GC
+    collects pooled connections after their loop died (worker shutdown,
+    interpreter exit). Real errors keep flowing to the previous hook.
+    """
+    global _installed_noise_filter
+    if _installed_noise_filter:
+        return
+    import sys
+
+    prev = sys.unraisablehook
+
+    def _hook(unraisable):
+        try:
+            if is_loop_teardown_noise(
+                getattr(unraisable, "exc_value", None),
+                getattr(unraisable, "object", None),
+            ):
+                return
+        except Exception:
+            pass
+        prev(unraisable)
+
+    sys.unraisablehook = _hook
+    _installed_noise_filter = True
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session per request."""
     async with AsyncSessionLocal() as session:
